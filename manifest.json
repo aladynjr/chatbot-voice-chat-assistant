@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "ChatGPT Logger",
+  "name": "Voice Chat Assistant - Add AI voice chat to ChatGPT web",
   "version": "1.1",
-  "description": "Logs ChatGPT conversations and converts them to speech",
+  "description": "Speak your messages and hear responses in near real-time. Say 'over' to send, pause anytime.",
   "permissions": [
     "webRequest",
     "storage",
@@ -11,7 +11,6 @@
   ],
   "host_permissions": [
     "https://chatgpt.com/*",
-    "https://elevenlabs.io/*",
     "https://api.elevenlabs.io/*"
   ],
   "background": {

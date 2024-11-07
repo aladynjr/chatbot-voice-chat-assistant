@@ -10,9 +10,13 @@ const state = {
     isEnabled: false,
     isRecording: false,
     pendingAudio: new Map(),
-    currentSequence: 0,
+    nextSequence: 0,
     recognition: null,
-    isRecognitionActive: false
+    isRecognitionActive: false,
+    currentSequence: 0,
+    ttsQueue: [], // Holds incoming TTS chunks
+    isProcessingTTS: false, // Indicates if a TTS request is being processed
+    isAwaitingNextTTS: false, // Indicates if the system is waiting to process the next TTS
 };
 
 function initializeSpeechRecognition() {
@@ -35,7 +39,12 @@ function initializeSpeechRecognition() {
             const transcript = event.results[i][0].transcript;
             if (event.results[i].isFinal) {
                 finalTranscript += transcript + ' ';
-                if (finalTranscript.toLowerCase().includes('over')) {
+                // Trim the message and convert to lowercase for checking
+                const trimmedMessage = finalTranscript.toLowerCase().trim();
+                // Remove trailing punctuation before checking for 'over'
+                const messageWithoutPunctuation = trimmedMessage.replace(/[.,!?]+$/, '').trim();
+                
+                if (messageWithoutPunctuation.endsWith('over')) {
                     const promptDiv = document.querySelector('div.ProseMirror[contenteditable="true"]');
                     if (promptDiv) {
                         // Stop recognition immediately to prevent double triggers
@@ -45,34 +54,48 @@ function initializeSpeechRecognition() {
                         // Clean up any playing audio first
                         cleanupAudio();
                         
-                        // Then handle the message
+                        // Show the full text including "over" first
+                        updateTextarea(finalTranscript.trim());
+                        
+                        // Then handle the message after a brief delay
                         const stopButton = document.querySelector('button[data-testid="stop-button"]');
                         if (stopButton) {
-                            // If there's an ongoing response, stop it and then send the new message
                             stopButton.click();
-                            // Wait a brief moment for the stop to take effect
                             setTimeout(() => {
-                                const overIndex = finalTranscript.toLowerCase().indexOf('over');
-                                const finalMessage = overIndex !== -1 
-                                    ? finalTranscript.substring(0, overIndex).trim()
-                                    : finalTranscript.trim();
+                                // Remove 'over' before sending
+                                const messageToSend = finalTranscript
+                                    .trim()
+                                    .replace(/\s*over[.,!?]*\s*$/i, '')
+                                    .trim();
                                 
-                                if (finalMessage) {
-                                    updateChatGPTInput(finalMessage);
-                                    finalTranscript = '';
+                                if (messageToSend) {
+                                    // First update the display without 'over'
+                                    updateTextarea(messageToSend);
+                                    // Then submit after a tiny delay
+                                    setTimeout(() => {
+                                        submitMessage();
+                                        finalTranscript = '';
+                                    }, 50);
                                 }
                             }, 1000);
                         } else {
-                            // If no ongoing response, send immediately
-                            const overIndex = finalTranscript.toLowerCase().indexOf('over');
-                            const finalMessage = overIndex !== -1 
-                                ? finalTranscript.substring(0, overIndex).trim()
-                                : finalTranscript.trim();
-                            
-                            if (finalMessage) {
-                                updateChatGPTInput(finalMessage);
-                                finalTranscript = '';
-                            }
+                            setTimeout(() => {
+                                // Remove 'over' before sending
+                                const messageToSend = finalTranscript
+                                    .trim()
+                                    .replace(/\s*over[.,!?]*\s*$/i, '')
+                                    .trim();
+                                
+                                if (messageToSend) {
+                                    // First update the display without 'over'
+                                    updateTextarea(messageToSend);
+                                    // Then submit after a tiny delay
+                                    setTimeout(() => {
+                                        submitMessage();
+                                        finalTranscript = '';
+                                    }, 50);
+                                }
+                            }, 250);
                         }
                         return;
                     }
@@ -82,7 +105,9 @@ function initializeSpeechRecognition() {
             }
         }
 
-        updateTextarea(finalTranscript + interimTranscript);
+        // Show the full transcript including "over" in the input field
+        const displayText = (finalTranscript + interimTranscript).trim();
+        updateTextarea(displayText);
     };
 
     recognition.onstart = () => {
@@ -151,10 +176,13 @@ function initializeSpeechRecognition() {
 }
 
 function updateTextarea(text) {
-    const promptTextarea = document.querySelector('#prompt-textarea');
-    if (promptTextarea) {
-        promptTextarea.innerHTML = text;
-        promptTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+    // Find the ProseMirror div
+    const promptDiv = document.querySelector('div.ProseMirror[contenteditable="true"]');
+    if (promptDiv) {
+        // Create a paragraph element with the cleaned text
+        promptDiv.innerHTML = `<p>${text}</p>`;
+        // Dispatch input event to trigger ChatGPT's internal handlers
+        promptDiv.dispatchEvent(new Event('input', { bubbles: true }));
     }
 }
 
@@ -175,7 +203,17 @@ function submitMessage() {
 }
 
 function updateChatGPTInput(text) {
-    updateTextarea(text);
+    // Clean up previous audio elements and state before sending new message
+    cleanupAudio();
+    
+    // Reset sequence counter when sending new message
+    state.currentSequence = 0;
+    
+    // Remove 'over' from the text before sending
+    const cleanedText = text.replace(/\s*over[.,!?]*\s*$/i, '').trim();
+    console.log('dude')
+    // Update textarea and submit
+    updateTextarea(cleanedText+' duuuuuuuude');
     submitMessage();
 }
 
@@ -284,17 +322,39 @@ async function playNextInQueue() {
         playNextInQueue();
     };
     
+    audioElement.onplay = () => {
+        console.log(`Audio sequence ${audioElement.dataset.sequence} is now playing.`);
+        processTTSQueue(); // Trigger the next TTS request
+    };
+    
     try {
         await audioElement.play();
     } catch {
         state.isPlaying = false;
         playNextInQueue();
     }
+
+    // Update Control Button Appearance when audio starts playing
+    const controlButton = document.getElementById('voice-chat-control-button');
+    if (controlButton) {
+        controlButton.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;">
+                <rect x="6" y="4" width="4" height="16"></rect>
+                <rect x="14" y="4" width="4" height="16"></rect>
+            </svg>
+            Pause Voice Chat
+        `;
+        controlButton.style.backgroundColor = '#ffcc00';
+        controlButton.style.color = '#ffffff';
+    }
 }
 
-// START: Control Button Component - Only modify this section
+// START: Control Button Component
+/**
+ * Creates the Voice Chat Control Button with dynamic behavior based on audio playback state.
+ */
 function createControlButton() {
-    // First check if button already exists
+    // Check if the control button already exists to prevent duplicates
     if (document.getElementById('voice-chat-control-button')) {
         return null;
     }
@@ -310,35 +370,124 @@ function createControlButton() {
         gap: 12px;
     `;
 
+    // Add speech bubble tooltip
+    const speechBubble = document.createElement('div');
+    speechBubble.style.cssText = `
+        position: absolute;
+        bottom: 100%;
+        right: 0;
+        margin-bottom: 12px;
+        background: white;
+        padding: 12px 16px;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        font-size: 14px;
+        color: #333;
+        white-space: nowrap;
+        display: none;  /* Hidden by default */
+        align-items: center;
+        gap: 8px;
+        animation: float 3s ease-in-out infinite;
+        pointer-events: none;
+    `;
+    
+    // Add floating animation keyframes
+    const styleSheet = document.createElement("style");
+    styleSheet.textContent = `
+        @keyframes float {
+            0% {
+                transform: translateY(0px);
+            }
+            50% {
+                transform: translateY(-10px);
+            }
+            100% {
+                transform: translateY(0px);
+            }
+        }
+    `;
+    document.head.appendChild(styleSheet);
+    
+    // Add speaking person icon and text
+    speechBubble.innerHTML = `
+      <svg fill="#ffffff" width="18" height="18" viewBox="0 0 32.00 32.00" id="icon" xmlns="http://www.w3.org/2000/svg" stroke="#ffffff" stroke-width="0.00032"><g id="SVGRepo_bgCarrier" stroke-width="0"><rect x="0" y="0" width="32.00" height="32.00" rx="16" fill="#212121" strokewidth="0"></rect></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round" stroke="#CCCCCC" stroke-width="0.768"></g><g id="SVGRepo_iconCarrier"> <defs> <style> .cls-1 { fill: none; } </style> </defs> <path d="M26,30H24V27H20a5.0055,5.0055,0,0,1-5-5V20.7207l-2.3162-.772a1,1,0,0,1-.5412-1.4631L15,13.7229V11a9.01,9.01,0,0,1,9-9h5V4H24a7.0078,7.0078,0,0,0-7,7v3a.9991.9991,0,0,1-.1426.5144l-2.3586,3.9312,1.8174.6057A1,1,0,0,1,17,20v2a3.0033,3.0033,0,0,0,3,3h5a1,1,0,0,1,1,1Z"></path> <rect x="19" y="12" width="4" height="2"></rect> <path d="M9.3325,25.2168a7.0007,7.0007,0,0,1,0-10.4341l1.334,1.49a5,5,0,0,0,0,7.4537Z"></path> <path d="M6.3994,28.8008a11.0019,11.0019,0,0,1,0-17.6006L7.6,12.8a9.0009,9.0009,0,0,0,0,14.4014Z"></path> <rect id="_Transparent_Rectangle_" data-name="<Transparent Rectangle>" class="cls-1" width="32" height="32"></rect> </g></svg>
+        Speak, then say "over" to send message
+    `;
+
+    // Add arrow/triangle
+    const arrow = document.createElement('div');
+    arrow.style.cssText = `
+        position: absolute;
+        bottom: -6px;
+        right: 20px;
+        width: 12px;
+        height: 12px;
+        background: white;
+        transform: rotate(45deg);
+        box-shadow: 3px 3px 3px rgba(0,0,0,0.05);
+    `;
+
+    speechBubble.appendChild(arrow);
+    buttonContainer.appendChild(speechBubble);
+
     const button = document.createElement('button');
     button.id = 'voice-chat-control-button';
 
-    // Check for API key first
+    // Retrieve the ElevenLabs API key from Chrome storage
     chrome.storage.local.get(['elevenLabsKey'], (result) => {
         const hasApiKey = result.elevenLabsKey && result.elevenLabsKey.trim() !== '';
-        
-        button.innerHTML = `
-            ${hasApiKey ? `
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;">
-                    <path d="M14.47 3.12a.75.75 0 0 0-1.32-.48L8.27 8.5H4.75A.75.75 0 0 0 4 9.25v5.5c0 .41.34.75.75.75h3.52l4.88 5.86a.75.75 0 0 0 1.32-.48V3.12zm2.74 4.17a.75.75 0 0 1 1.06.02c1.27 1.31 2.03 3.1 2.03 5.06s-.76 3.75-2.03 5.06a.75.75 0 1 1-1.08-1.04c.96-1 1.61-2.37 1.61-4.02s-.65-3.02-1.61-4.02a.75.75 0 0 1 .02-1.06z" fill="currentColor"/>
-                </svg>
-                Voice Chat
-            ` : `
-                ⚠️ Voice Chat
-            `}
-        `;
 
+        /**
+         * Returns the appropriate HTML content for the button based on the current state.
+         */
+        const getButtonContent = () => {
+            if (state.isPlaying) {
+                return `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;">
+                        <rect x="6" y="4" width="4" height="16"></rect>
+                        <rect x="14" y="4" width="4" height="16"></rect>
+                    </svg>
+                    Pause Voice Chat
+                `;
+            } else if (state.isEnabled) {
+                return `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;">
+                        <path d="M14.47 3.12a.75.75 0 0 0-1.32-.48L8.27 8.5H4.75A.75.75 0 0 0 4 9.25v5.5c0 .41.34.75.75.75h3.52l4.88 5.86a.75.75 0 0 0 1.32-.48V3.12zm2.74 4.17a.75.75 0 0 1 1.06.02c1.27 1.31 2.03 3.1 2.03 5.06s-.76 3.75-2.03 5.06a.75.75 0 1 1-1.08-1.04c.96-1 1.61-2.37 1.61-4.02s-.65-3.02-1.61-4.02a.75.75 0 0 1 .02-1.06z" />
+                    </svg>
+                    Voice Chat Active
+                `;
+            } else {
+                return `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;">
+                        <path d="M14.47 3.12a.75.75 0 0 0-1.32-.48L8.27 8.5H4.75A.75.75 0 0 0 4 9.25v5.5c0 .41.34.75.75.75h3.52l4.88 5.86a.75.75 0 0 0 1.32-.48V3.12zm2.74 4.17a.75.75 0 0 1 1.06.02c1.27 1.31 2.03 3.1 2.03 5.06s-.76 3.75-2.03 5.06a.75.75 0 1 1-1.08-1.04c.96-1 1.61-2.37 1.61-4.02s-.65-3.02-1.61-4.02a.75.75 0 0 1 .02-1.06z" />
+                    </svg>
+                    Start Voice Chat
+                `;
+            }
+        };
+
+        /**
+         * Returns the appropriate CSS styles for the button based on the current state.
+         */
+        const getButtonStyles = () => {
+            if (state.isPlaying) {
+                return 'background-color: #ffcc00; color: #ffffff;';
+            } else if (state.isEnabled) {
+                return 'background-color: #0066ff; color: #ffffff;';
+            } else {
+                return 'background-color: #f0f0f0; color: #666666;';
+            }
+        };
+
+        button.innerHTML = getButtonContent();
+
+        // Apply initial styles to the button
         button.style.cssText = `
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            z-index: 10000;
             padding: 12px 20px;
-            background-color: ${hasApiKey ? '#f0f0f0' : '#e0e0e0'};
-            border: 1px solid #e0e0e0;
-            color: ${hasApiKey ? '#666' : '#999'};
+            ${getButtonStyles()}
+            border: 1px solid #cccccc;
             border-radius: 28px;
-            cursor: ${hasApiKey ? 'pointer' : 'not-allowed'};
+            cursor: pointer;
             font-weight: 500;
             font-size: 14px;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -349,7 +498,7 @@ function createControlButton() {
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         `;
 
-        // Add tooltip for API key warning
+        // Add tooltip for API key warning if the key is missing
         if (!hasApiKey) {
             const tooltip = document.createElement('div');
             tooltip.style.cssText = `
@@ -371,23 +520,40 @@ function createControlButton() {
             tooltip.textContent = 'Please set your ElevenLabs API key in the extension popup';
             button.appendChild(tooltip);
 
+            // Show tooltip on hover
             button.onmouseenter = () => tooltip.style.opacity = '1';
             button.onmouseleave = () => tooltip.style.opacity = '0';
             return;
         }
 
-        // Rest of the button click handler only if API key exists
+        /**
+         * Click handler for the control button.
+         * - If audio is playing, clicking pauses/stops the audio.
+         * - Otherwise, toggles the voice chat state.
+         */
         button.onclick = () => {
-            if (!hasApiKey) return;
-            
+            if (!hasApiKey) return; // Do nothing if API key is missing
+
+            if (state.isPlaying) {
+                cleanupAudio();
+                return;
+            }
+
+            // Toggle the voice chat enabled state
             state.isEnabled = !state.isEnabled;
-            
+
+            // Update button appearance
             if (state.isEnabled) {
                 button.style.backgroundColor = '#0066ff';
                 button.style.color = '#ffffff';
-                button.style.border = '1px solid #0066ff';
-                
-                // Update mic button appearance immediately
+                button.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;">
+                        <path d="M14.47 3.12a.75.75 0 0 0-1.32-.48L8.27 8.5H4.75A.75.75 0 0 0 4 9.25v5.5c0 .41.34.75.75.75h3.52l4.88 5.86a.75.75 0 0 0 1.32-.48V3.12zm2.74 4.17a.75.75 0 0 1 1.06.02c1.27 1.31 2.03 3.1 2.03 5.06s-.76 3.75-2.03 5.06a.75.75 0 1 1-1.08-1.04c.96-1 1.61-2.37 1.61-4.02s-.65-3.02-1.61-4.02a.75.75 0 0 1 .02-1.06z" />
+                    </svg>
+                    Voice Chat Active
+                `;
+
+                // Immediately update mic button appearance
                 const micButton = document.querySelector('#voice-input-button');
                 if (micButton) {
                     micButton.style.backgroundColor = 'rgba(255, 68, 68, 0.1)';
@@ -401,8 +567,33 @@ function createControlButton() {
                         </svg>
                     `;
                 }
-                
-                // Start recording when enabling
+            } else {
+                button.style.backgroundColor = '#f0f0f0';
+                button.style.color = '#666666';
+                button.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;">
+                        <path d="M14.47 3.12a.75.75 0 0 0-1.32-.48L8.27 8.5H4.75A.75.75 0 0 0 4 9.25v5.5c0 .41.34.75.75.75h3.52l4.88 5.86a.75.75 0 0 0 1.32-.48V3.12zm2.74 4.17a.75.75 0 0 1 1.06.02c1.27 1.31 2.03 3.1 2.03 5.06s-.76 3.75-2.03 5.06a.75.75 0 1 1-1.08-1.04c.96-1 1.61-2.37 1.61-4.02s-.65-3.02-1.61-4.02a.75.75 0 0 1 .02-1.06z" />
+                    </svg>
+                    Start Voice Chat
+                `;
+
+                // Immediately update mic button appearance
+                const micButton = document.querySelector('#voice-input-button');
+                if (micButton) {
+                    micButton.style.backgroundColor = 'transparent';
+                    micButton.style.color = '#8e8ea0';
+                    micButton.innerHTML = `
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" fill="currentColor"/>
+                            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" fill="currentColor"/>
+                        </svg>
+                    `;
+                }
+            }
+
+            // When enabling voice chat
+            if (state.isEnabled) {
+                // Initialize and start speech recognition if not already active
                 if (!state.recognition) {
                     state.recognition = initializeSpeechRecognition();
                 }
@@ -414,31 +605,26 @@ function createControlButton() {
                     }
                 }
             } else {
-                button.style.backgroundColor = '#f0f0f0';
-                button.style.color = '#666';
-                button.style.border = '1px solid #e0e0e0';
-                
+                // When disabling voice chat
+                // Stop speech recognition if it's active
                 if (state.recognition) {
                     state.recognition.stop();
                 }
+                // Clean up any existing audio
                 cleanupAudio();
             }
 
-            button.innerHTML = `
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;">
-                    <path d="M14.47 3.12a.75.75 0 0 0-1.32-.48L8.27 8.5H4.75A.75.75 0 0 0 4 9.25v5.5c0 .41.34.75.75.75h3.52l4.88 5.86a.75.75 0 0 0 1.32-.48V3.12zm2.74 4.17a.75.75 0 0 1 1.06.02c1.27 1.31 2.03 3.1 2.03 5.06s-.76 3.75-2.03 5.06a.75.75 0 1 1-1.08-1.04c.96-1 1.61-2.37 1.61-4.02s-.65-3.02-1.61-4.02a.75.75 0 0 1 .02-1.06z" fill="currentColor"/>
-                </svg>
-                ${state.isEnabled ? 'Voice Chat Active' : 'Voice Chat'}
-            `;
-            
-            if (!state.isEnabled) {
-                cleanupAudio();
-            }
+            // Update the button's inner HTML based on the new state
+            button.innerHTML = getButtonContent();
         };
 
-        // Hover effects only if API key exists
+        /**
+         * Hover effects for the button.
+         * Changes background color on hover, excluding when audio is playing.
+         */
         button.onmouseenter = () => {
             if (!hasApiKey) return;
+            if (state.isPlaying) return; // Do not change styles when audio is playing
             if (state.isEnabled) {
                 button.style.backgroundColor = '#0052cc';
             } else {
@@ -448,29 +634,196 @@ function createControlButton() {
 
         button.onmouseleave = () => {
             if (!hasApiKey) return;
+            if (state.isPlaying) return; // Do not change styles when audio is playing
             if (state.isEnabled) {
                 button.style.backgroundColor = '#0066ff';
             } else {
                 button.style.backgroundColor = '#f0f0f0';
             }
         };
+
+        // Modify the button click handler to show/hide tooltip
+        const originalOnClick = button.onclick;
+        button.onclick = () => {
+            if (!hasApiKey) return;
+            
+            originalOnClick?.();
+            
+            // Show/hide tooltip based on state.isEnabled
+            speechBubble.style.display = state.isEnabled ? 'flex' : 'none';
+        };
+
+        // Initial tooltip visibility
+        speechBubble.style.display = state.isEnabled ? 'flex' : 'none';
     });
 
+    // Append the control button to the container
     buttonContainer.appendChild(button);
     return buttonContainer;
 }
 
+/**
+ * Stops all audio playback, cleans up resources, and resets relevant state variables.
+ * Also removes all audio elements from the DOM.
+ */
 function cleanupAudio() {
+    // First, stop all ongoing requests
     chrome.runtime.sendMessage({ type: 'STOP_ALL_REQUESTS' });
-    
-    state.audioQueue.forEach(audio => {
-        audio.pause();
-        URL.revokeObjectURL(audio.src);
-    });
+
+    // Clear interceptor state
+    window.postMessage({ type: 'CLEAR_INTERCEPTOR_STATE' }, '*');
+
+    // Clear all state variables
     state.audioQueue = [];
     state.isPlaying = false;
+    state.isProcessingTTS = false;
+    state.isAwaitingNextTTS = false;
+    state.ttsQueue = []; // Add this line to clear TTS queue
+    state.currentSequence = 0; // Reset sequence counter
 
-    document.querySelectorAll('audio').forEach(audio => audio.pause());
+    // Remove all audio elements
+    const audioWrapper = document.querySelector('.tts-audio-wrapper');
+    if (audioWrapper) {
+        const audioElements = audioWrapper.querySelectorAll('audio');
+        audioElements.forEach(audio => {
+            audio.pause();
+            if (audio.src) {
+                URL.revokeObjectURL(audio.src);
+            }
+        });
+        audioWrapper.innerHTML = ''; // Clear all audio containers
+    }
+
+    // Update control button appearance
+    const controlButton = document.getElementById('voice-chat-control-button');
+    if (controlButton && state.isEnabled) {
+        controlButton.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;">
+                <path d="M14.47 3.12a.75.75 0 0 0-1.32-.48L8.27 8.5H4.75A.75.75 0 0 0 4 9.25v5.5c0 .41.34.75.75.75h3.52l4.88 5.86a.75.75 0 0 0 1.32-.48V3.12zm2.74 4.17a.75.75 0 0 1 1.06.02c1.27 1.31 2.03 3.1 2.03 5.06s-.76 3.75-2.03 5.06a.75.75 0 1 1-1.08-1.04c.96-1 1.61-2.37 1.61-4.02s-.65-3.02-1.61-4.02a.75.75 0 0 1 .02-1.06z" />
+            </svg>
+            Voice Chat Active
+        `;
+        controlButton.style.backgroundColor = '#0066ff';
+        controlButton.style.color = '#ffffff';
+    }
+}
+// New Functions for TTS Queue Management
+
+function enqueueTTS(text) {
+    state.ttsQueue.push(text);
+    processTTSQueue();
+}
+
+async function processTTSQueue() {
+    if (state.isProcessingTTS || state.ttsQueue.length === 0) return;
+
+    state.isProcessingTTS = true;
+    const text = state.ttsQueue.shift();
+
+    try {
+        const response = await chrome.runtime.sendMessage({
+            type: 'CREATE_SPEECH',
+            text: text,
+            streamId: Date.now().toString()
+        });
+
+        if (response.error || !response.sourceUrl) {
+            console.error('Error processing audio:', response.error || 'No sourceUrl');
+        } else {
+            const sequence = response.sequence;
+            const audioElement = await createAudioElement(response.sourceUrl, sequence);
+            state.audioQueue.push(audioElement);
+            if (!state.isPlaying) {
+                playNextInQueue();
+            }
+        }
+    } catch (error) {
+        console.error('Error sending CREATE_SPEECH message:', error);
+    } finally {
+        state.isProcessingTTS = false;
+    }
+}
+
+async function createAudioElement(sourceUrl, sequence) {
+    const base64Data = sourceUrl.split(',')[1];
+    const binaryData = atob(base64Data);
+    const arrayBuffer = new ArrayBuffer(binaryData.length);
+    const uint8Array = new Uint8Array(arrayBuffer);
+    
+    for (let i = 0; i < binaryData.length; i++) {
+        uint8Array[i] = binaryData.charCodeAt(i);
+    }
+    
+    const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+    const blobUrl = URL.createObjectURL(blob);
+
+    const audioElement = document.createElement('audio');
+    audioElement.src = blobUrl;
+    audioElement.controls = true;
+    audioElement.dataset.streamId = sequence;
+    audioElement.dataset.sequence = sequence;
+    
+    const audioContainer = document.createElement('div');
+    audioContainer.style.cssText = `
+        margin: 10px 0;
+        padding: 10px;
+        background-color: white;
+        border-radius: 5px;
+        transition: background-color 0.5s ease;
+        display: none; /* Hide the container */
+    `;
+    audioContainer.appendChild(audioElement);
+
+    let audioWrapper = document.querySelector('.tts-audio-wrapper');
+    if (!audioWrapper) {
+        audioWrapper = document.createElement('div');
+        audioWrapper.className = 'tts-audio-wrapper';
+        audioWrapper.style.cssText = `
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            z-index: 10000;
+            max-height: 300px;
+            overflow-y: auto;
+            background: #f9f9f9;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: none; /* Hide the wrapper */
+        `;
+        document.body.appendChild(audioWrapper);
+    }
+    
+    audioWrapper.appendChild(audioContainer);
+
+    // When the audio starts playing, set the flag to allow the next TTS request
+    audioElement.onplay = () => {
+        console.log(`Audio sequence ${sequence} is now playing.`);
+        if (!state.isAwaitingNextTTS) {
+            state.isAwaitingNextTTS = true;
+            processTTSQueue(); // Trigger the next TTS request
+        }
+    };
+
+    audioElement.onended = () => {
+        console.log(`Audio sequence ${sequence} has finished playing.`);
+        
+        // Add green background when audio finishes playing
+        audioContainer.style.backgroundColor = 'green';
+        
+        // Optional: Remove the audio element after a short delay to allow the background color change to be visible
+        setTimeout(() => {
+            audioContainer.remove();
+            URL.revokeObjectURL(blobUrl);
+            state.isPlaying = false;
+            state.isAwaitingNextTTS = false;
+            playNextInQueue();
+
+            console.log(`Audio sequence ${sequence} container removed.`);
+        }, 1000); // 1-second delay
+    };
+
+    return audioElement;
 }
 
 function initializeFeatures() {
@@ -493,7 +846,7 @@ const observer = new MutationObserver(() => {
         requestAnimationFrame(() => initializeFeatures());
     }
 });
-
+    
 observer.observe(document.documentElement, {
     childList: true,
     subtree: true,
@@ -508,120 +861,11 @@ if (document.readyState === 'complete') {
     initializeFeatures();
 }
 
-// Message handler
+// Message handler with sequence assignment
 window.addEventListener('message', async ({ data }) => {
     if (data.type === 'CHATGPT_RESPONSE' && state.isEnabled) {
-        const streamId = Date.now().toString();
-        console.log('Received chunk:', data.chunk);
-        
-        const startTime = state.currentSequence === 0 ? performance.now() : null;
-        const audioElement = await processAudioChunk(data.chunk, streamId, startTime);
-        
-        if (audioElement) {
-            state.audioQueue.push(audioElement);
-            playNextInQueue();
-            state.currentSequence++;
-            
-            while (state.pendingAudio.has(state.currentSequence)) {
-                const nextAudio = state.pendingAudio.get(state.currentSequence);
-                state.pendingAudio.delete(state.currentSequence);
-                state.audioQueue.push(nextAudio);
-                playNextInQueue();
-                state.currentSequence++;
-            }
-        }
+        const chunk = data.chunk;
+        enqueueTTS(chunk); // Enqueue the chunk for TTS processing
     }
 });
 
-async function processAudioChunk(chunk, streamId, startTime) {
-    try {
-        const response = await chrome.runtime.sendMessage({
-            type: 'CREATE_SPEECH',
-            text: chunk,
-            streamId
-        });
-
-        if (response.error || !response.sourceUrl) {
-            console.error('Error processing audio:', response.error || 'No sourceUrl');
-            return null;
-        }
-
-        if (startTime) {
-            console.log(`Time from chunk to audio ready: ${performance.now() - startTime}ms`);
-        }
-
-        const audioElement = await createAudioElement(response.sourceUrl, streamId, response.sequence);
-        return audioElement;
-    } catch (error) {
-        console.error(`[${streamId}] Error processing audio:`, error);
-        return null;
-    }
-}
-
-async function createAudioElement(sourceUrl, streamId, sequence) {
-    const base64Data = sourceUrl.split(',')[1];
-    const binaryData = atob(base64Data);
-    const arrayBuffer = new ArrayBuffer(binaryData.length);
-    const uint8Array = new Uint8Array(arrayBuffer);
-    
-    for (let i = 0; i < binaryData.length; i++) {
-        uint8Array[i] = binaryData.charCodeAt(i);
-    }
-    
-    const blob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
-    const blobUrl = URL.createObjectURL(blob);
-
-    const audioElement = document.createElement('audio');
-    audioElement.src = blobUrl;
-    audioElement.controls = true;
-    audioElement.dataset.streamId = streamId;
-    audioElement.dataset.sequence = sequence;
-    
-    const audioContainer = document.createElement('div');
-    audioContainer.style.margin = '10px 0';
-    audioContainer.appendChild(audioElement);
-
-    let audioWrapper = document.querySelector('.tts-audio-wrapper');
-    if (!audioWrapper) {
-        audioWrapper = document.createElement('div');
-        audioWrapper.className = 'tts-audio-wrapper';
-        audioWrapper.style.cssText = `
-            position: fixed;
-            bottom: 80px;
-            right: 20px;
-            z-index: 10000;
-            max-height: 300px;
-            overflow-y: auto;
-            background: white;
-            padding: 10px;
-            border-radius: 5px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        `;
-        document.body.appendChild(audioWrapper);
-    }
-    
-    audioWrapper.appendChild(audioContainer);
-
-    audioElement.onended = () => {
-        audioContainer.remove();
-        URL.revokeObjectURL(blobUrl);
-        chrome.runtime.sendMessage({
-            type: 'CLEANUP_STREAM',
-            streamId
-        });
-        state.isPlaying = false;
-        playNextInQueue();
-
-        // If this was the last audio in the queue and voice chat is still enabled,
-        // restart the microphone
-        if (state.audioQueue.length === 0 && state.isEnabled) {
-            setTimeout(() => {
-                if (state.recognition) {
-                    state.recognition.start();
-                }
-            }, 500); // Small delay to ensure everything is cleaned up
-        }
-    };
-
-    return audioElement;
-}

@@ -2,12 +2,12 @@ let activeStreams = new Map();
 let abortController = null;
 let requestQueue = [];
 let processingCount = 0;
-const MAX_CONCURRENT_REQUESTS = 2;
+const MAX_CONCURRENT_REQUESTS = 1;
 let sequenceNumber = 0;
 
-async function streamSpeech(text, streamId) {
+async function streamSpeech(text, streamId, sequence) {
     const startTime = performance.now();
-    console.log(`[${streamId}] Starting speech generation at ${startTime}ms`);
+    console.log(`[${streamId}] Starting speech generation at ${startTime.toFixed(2)}ms`);
     
     try {
         const result = await chrome.storage.local.get(['elevenLabsKey']);
@@ -43,7 +43,7 @@ async function streamSpeech(text, streamId) {
         }
 
         const fetchEndTime = performance.now();
-        console.log(`[${streamId}] Fetch completed in ${fetchEndTime - startTime}ms`);
+        console.log(`[${streamId}] Fetch completed in ${(fetchEndTime - startTime).toFixed(2)}ms`);
 
         // Get the array buffer from the response
         const arrayBuffer = await response.arrayBuffer();
@@ -67,16 +67,15 @@ async function streamSpeech(text, streamId) {
         });
 
         const endTime = performance.now();
-        console.log(`[${streamId}] Total processing time in background: ${endTime - startTime}ms`);
-        return { sourceUrl: audioDataUrl }; // Return as object with sourceUrl property
-
+        console.log(`[${streamId}] Total processing time in background: ${(endTime - startTime).toFixed(2)}ms`);
+        return { sourceUrl: audioDataUrl, sequence };
     } catch (error) {
         if (error.name === 'AbortError') {
             console.log('Request was aborted');
-            return { error: 'Request aborted' };
+            return { error: 'Request aborted', sequence };
         }
         console.error('Error in streamSpeech:', error);
-        return { error: error.message }; // Return error in consistent format
+        return { error: error.message, sequence };
     }
 }
 
@@ -91,12 +90,15 @@ async function processQueue() {
     while (requestQueue.length > 0 && processingCount < MAX_CONCURRENT_REQUESTS) {
         const { text, streamId, sendResponse, sequence } = requestQueue.shift();
         processingCount++;
+        console.log(`Processing sequence ${sequence}: ${text}`);
         
         try {
-            const result = await streamSpeech(text, streamId);
+            const result = await streamSpeech(text, streamId, sequence);
             sendResponse({ ...result, sequence });
+            console.log(`Completed sequence ${sequence}`);
         } catch (error) {
             sendResponse({ error: error.message, sequence });
+            console.error(`Error in sequence ${sequence}:`, error);
         } finally {
             processingCount--;
             processQueue();
@@ -107,21 +109,25 @@ async function processQueue() {
 function stopAllRequests() {
     if (abortController) {
         abortController.abort();
-        abortController = null;
+        abortController = new AbortController();
     }
-    // Clear the queue
-    requestQueue = [];
+    
+    requestQueue.length = 0;
     processingCount = 0;
+    
     activeStreams.clear();
+    
+    sequenceNumber = 0;
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'CREATE_SPEECH') {
+        const currentSequence = sequenceNumber++;
         requestQueue.push({
             text: message.text,
             streamId: message.streamId,
             sendResponse,
-            sequence: sequenceNumber++
+            sequence: currentSequence
         });
         
         processQueue();

@@ -1,6 +1,20 @@
 const originalFetch = window.fetch;
-const sentChunks = new Set();
-let pendingChunk = '';
+const sentSentences = new Set();
+let pendingText = '';
+let isMessageComplete = false;
+
+// Queue to handle incoming chunks
+const chunkQueue = [];
+let isProcessing = false;
+
+// Function to reset the state for a new chat
+const resetChatState = () => {
+    console.log('Resetting chat state');
+    pendingText = ''; // Clear the pending text
+    sentSentences.clear(); // Clear the sent sentences
+    isMessageComplete = false; // Reset completion flag
+    chunkQueue.length = 0; // Clear the chunk queue
+};
 
 // Helper function to extract text from different chunk formats
 const extractChunkText = (parsed) => {
@@ -29,105 +43,140 @@ const cleanChunkText = (text) => {
         .trim();
 };
 
-// Helper function to count words
-const countWords = (text) => text.trim().split(/\s+/).length;
-
-// Helper to find the last sentence break
-const findLastSentenceBreak = (text) => {
-    // Order of precedence for break points
-    const breakPoints = [
-        text.lastIndexOf('. '),   // Period with space
-        text.lastIndexOf('? '),   // Question mark with space
-        text.lastIndexOf('! '),   // Exclamation with space
-        text.lastIndexOf('; '),   // Semicolon with space
-        text.lastIndexOf(': '),   // Colon with space
-        text.lastIndexOf(', ')    // Comma with space
-    ];
-
-    // Find the last occurring break point
-    const lastBreak = Math.max(...breakPoints);
-    return lastBreak >= 0 ? lastBreak + 2 : -1; // +2 to include the punctuation and space
+// Helper function to split text into sentences
+const splitIntoSentences = (text) => {
+    // Split based on sentence-ending punctuation followed by a space or end of string
+    return text.match(/[^.!?]+[.!?]+(\s|$)/g) || [];
 };
 
-// Combined send function
-const processChunk = (chunk, forceSend = false) => {
-    const cleanedChunk = cleanChunkText(chunk);
-    if (cleanedChunk.length <= 1) return;
+// Function to process the chunk queue
+const processQueue = async () => {
+    if (isProcessing || chunkQueue.length === 0) return;
+    isProcessing = true;
 
-    if (!pendingChunk) {
-        pendingChunk = cleanedChunk;
-    } else {
-        pendingChunk = `${pendingChunk} ${cleanedChunk}`.trim();
-    }
+    while (chunkQueue.length > 0) {
+        const { chunk, isLast } = chunkQueue.shift();
+        const cleanedChunk = cleanChunkText(chunk);
+        if (cleanedChunk.length <= 1) continue;
 
-    // Check if we should process the pending chunk
-    if (forceSend || countWords(pendingChunk) >= 20) {
-        const breakPoint = findLastSentenceBreak(pendingChunk);
-        
-        if (breakPoint > 0) {
-            // Split at the last sentence break
-            const toSend = pendingChunk.substring(0, breakPoint).trim();
-            const remaining = pendingChunk.substring(breakPoint).trim();
-            
-            if (!sentChunks.has(toSend)) {
-                sentChunks.add(toSend);
-                window.postMessage({ type: 'CHATGPT_RESPONSE', chunk: toSend }, '*');
+        pendingText += ` ${cleanedChunk}`.trim();
+        console.log('Current pendingText:', pendingText);
+
+        const sentences = splitIntoSentences(pendingText);
+        let lastIndex = 0;
+
+        sentences.forEach(sentence => {
+            const trimmedSentence = sentence.trim();
+            if (trimmedSentence && !sentSentences.has(trimmedSentence)) {
+                // Send the sentence
+                window.postMessage({ type: 'CHATGPT_RESPONSE', chunk: trimmedSentence }, '*');
+                console.log('Chunk sent successfully:', trimmedSentence);
+                sentSentences.add(trimmedSentence);
+                // Remove the sent sentence from pendingText
+                lastIndex += sentence.length;
             }
-            
-            pendingChunk = remaining; // Keep the remainder for the next chunk
-        } else if (forceSend) {
-            // If no break point found and force send, send everything
-            if (!sentChunks.has(pendingChunk)) {
-                sentChunks.add(pendingChunk);
-                window.postMessage({ type: 'CHATGPT_RESPONSE', chunk: pendingChunk }, '*');
+        });
+
+        pendingText = pendingText.slice(lastIndex).trim();
+
+        if (isLast && pendingText) {
+            const trimmedPending = pendingText.trim();
+            if (trimmedPending && !sentSentences.has(trimmedPending)) {
+                console.log('Force sending final chunk:', trimmedPending);
+                window.postMessage({ type: 'CHATGPT_RESPONSE', chunk: trimmedPending }, '*');
+                sentSentences.add(trimmedPending);
+                pendingText = '';
+                console.log('Final chunk sent and cleared');
+            } else {
+                console.log('Final chunk already sent or empty, clearing pendingText');
+                pendingText = '';
             }
-            pendingChunk = '';
         }
     }
+
+    isProcessing = false;
 };
 
+// Add a check to ensure that the chunk is valid JSON before parsing
+const processEventData = (data) => {
+    try {
+        const parsed = JSON.parse(data);
+        if (parsed.v?.message?.author?.role === 'user') return; // Skip user messages
+
+        // Check for completion in message metadata
+        const isComplete = parsed.v?.message?.metadata?.is_complete;
+        if (isComplete) {
+            isMessageComplete = true;
+        }
+
+        const chunkText = extractChunkText(parsed);
+        if (chunkText) {
+            // Add the chunk to the queue
+            chunkQueue.push({ chunk: chunkText, isLast: isComplete });
+            processQueue();
+        }
+
+    } catch (e) {
+        console.error('Error parsing chunk:', e);
+    }
+};
+
+// Override the fetch function
 window.fetch = async function(...args) {
     const response = await originalFetch.apply(this, args);
-    
+
     if (!args[0].includes('/backend-api/conversation')) return response;
-    
+
     const [stream1, stream2] = response.body.tee();
     const reader = stream2.getReader();
-    
+
     (async () => {
         try {
             while (true) {
                 const {done, value} = await reader.read();
                 if (done) break;
-                
+
                 const chunk = new TextDecoder().decode(value);
                 for (const event of chunk.split('\n\n')) {
                     const dataLine = event.split('\n').find(line => line.startsWith('data: '));
                     if (!dataLine) continue;
-                    
-                    try {
-                        const data = dataLine.slice(6);
-                        if (data === '[DONE]') {
-                            if (pendingChunk) processChunk(pendingChunk, true); // Force send remaining chunk
-                            sentChunks.clear();
-                            continue;
+
+                    const data = dataLine.slice(6);
+                    if (data === '[DONE]') {
+                        if (pendingText) {
+                            // Add the remaining text as the last chunk
+                            chunkQueue.push({ chunk: pendingText, isLast: true });
+                            processQueue();
                         }
-                        
-                        const parsed = JSON.parse(data);
-                        if (parsed.v?.message?.author?.role === 'user') continue;
-                        
-                        const chunkText = extractChunkText(parsed);
-                        if (chunkText) processChunk(chunkText);
-                        
-                    } catch (e) {
-                        console.error('Error parsing chunk:', e);
+                        resetChatState(); // Reset state after sending the last chunk
+                        continue;
                     }
+
+                    processEventData(data); // Use the new function to process event data
                 }
             }
         } catch (error) {
             if (error.name !== 'AbortError') console.error('Stream processing error:', error);
         }
     })();
-    
+
     return new Response(stream1, response);
 };
+
+// Reset state on URL change
+window.addEventListener('popstate', resetChatState); // Reset when the URL changes
+
+// Expose a method to clear the interceptor state
+window.clearInterceptorState = () => {
+    console.log('Clearing interceptor state');
+    resetChatState();
+    chunkQueue.length = 0;
+    isProcessing = false;
+};
+
+// Listen for messages from content script
+window.addEventListener('message', (event) => {
+    if (event.data.type === 'CLEAR_INTERCEPTOR_STATE') {
+        window.clearInterceptorState();
+    }
+});
