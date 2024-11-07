@@ -21,7 +21,12 @@ const BUTTONS = {
                         <rect x="14" y="4" width="4" height="16"></rect>
                     </svg>
                 `,
-                style: 'background-color: #ffcc00; color: #ffffff;'
+                style: `
+                    background: #FCD34D;
+                    color: #1E293B;
+                    border: none;
+                    box-shadow: 0 4px 16px rgba(251, 191, 36, 0.2);
+                `
             },
             ENABLED: {
                 text: 'Voice Chat Active',
@@ -30,7 +35,12 @@ const BUTTONS = {
                         <path d="M14.47 3.12a.75.75 0 0 0-1.32-.48L8.27 8.5H4.75A.75.75 0 0 0 4 9.25v5.5c0 .41.34.75.75.75h3.52l4.88 5.86a.75.75 0 0 0 1.32-.48V3.12zm2.74 4.17a.75.75 0 0 1 1.06.02c1.27 1.31 2.03 3.1 2.03 5.06s-.76 3.75-2.03 5.06a.75.75 0 1 1-1.08-1.04c.96-1 1.61-2.37 1.61-4.02s-.65-3.02-1.61-4.02a.75.75 0 0 1 .02-1.06z" />
                     </svg>
                 `,
-                style: 'background-color: #0066ff; color: #ffffff;'
+                style: `
+                    background: #0052cc;
+                    color: #ffffff;
+                    border: none;
+                    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12);
+                `
             },
             DISABLED: {
                 text: 'Start Voice Chat',
@@ -39,13 +49,17 @@ const BUTTONS = {
                         <path d="M14.47 3.12a.75.75 0 0 0-1.32-.48L8.27 8.5H4.75A.75.75 0 0 0 4 9.25v5.5c0 .41.34.75.75.75h3.52l4.88 5.86a.75.75 0 0 0 1.32-.48V3.12zm2.74 4.17a.75.75 0 0 1 1.06.02c1.27 1.31 2.03 3.1 2.03 5.06s-.76 3.75-2.03 5.06a.75.75 0 1 1-1.08-1.04c.96-1 1.61-2.37 1.61-4.02s-.65-3.02-1.61-4.02a.75.75 0 0 1 .02-1.06z" />
                     </svg>
                 `,
-                style: 'background-color: #f0f0f0; color: #666666;'
+                style: `
+                    background: #F8FAFC;
+                    color: #64748B;
+                    border: 1px solid #E2E8F0;
+                    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+                `
             }
         },
         baseStyle: `
-            padding: 12px 20px;
-            border: 1px solid #cccccc;
-            border-radius: 28px;
+            padding: 14px 24px;
+            border-radius: 14px;
             cursor: pointer;
             font-weight: 500;
             font-size: 14px;
@@ -55,6 +69,7 @@ const BUTTONS = {
             align-items: center;
             justify-content: center;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(8px);
         `
     },
     MIC: {
@@ -68,7 +83,11 @@ const BUTTONS = {
                         <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" fill="currentColor"/>
                     </svg>
                 `,
-                style: 'background-color: rgba(255, 68, 68, 0.1); color: #ff4444;'
+                style: `
+                    background: rgba(239, 68, 68, 0.08);
+                    color: #EF4444;
+                    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.2);
+                `
             },
             INACTIVE: {
                 icon: `
@@ -77,20 +96,25 @@ const BUTTONS = {
                         <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" fill="currentColor"/>
                     </svg>
                 `,
-                style: 'background-color: transparent; color: #8e8ea0;'
+                style: `
+                    background: transparent;
+                    color: #64748B;
+                    box-shadow: 0 0 0 1px #E2E8F0;
+                `
             }
         },
         baseStyle: `
             background: transparent;
             border: none;
-            padding: 8px;
+            padding: 10px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             margin-right: 8px;
-            border-radius: 6px;
-            transition: all 0.2s ease;
+            border-radius: 12px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(8px);
         `
     }
 };
@@ -148,6 +172,7 @@ class AudioQueue {
             const controlButton = document.getElementById('voice-chat-control-button');
             if (controlButton && this.queue.length === 0) {
                 updateButtonAppearance(controlButton, false, state.isEnabled);
+                updateSpeechBubbleVisibility(state.isEnabled);
             }
         };
 
@@ -521,7 +546,6 @@ function createControlButton() {
         display: none;
         align-items: center;
         gap: 8px;
-        animation: float 3s ease-in-out infinite;
         pointer-events: none;
     `;
     
@@ -640,19 +664,33 @@ function createControlButton() {
             }
 
             updateButtonAppearance(button, false, state.isEnabled);
-            speechBubble.style.display = state.isEnabled ? 'flex' : 'none';
+            updateSpeechBubbleVisibility(state.isEnabled);
         };
 
         button.onmouseenter = () => {
             if (!hasApiKey) return;
-            if (state.isPlaying) return;
-            button.style.backgroundColor = state.isEnabled ? '#0052cc' : '#e8e8e8';
+            if (state.isPlaying) {
+                button.style.cssText = `
+                    ${BUTTONS.CONTROL.baseStyle}
+                    ${BUTTONS.CONTROL.states.PLAYING.style}
+                    background-color: #e6b800;
+                `;
+                return;
+            }
+            button.style.cssText = `
+                ${BUTTONS.CONTROL.baseStyle}
+                ${state.isEnabled ? BUTTONS.CONTROL.states.ENABLED.style : BUTTONS.CONTROL.states.DISABLED.style}
+                background-color: ${state.isEnabled ? '#0052cc' : '#e8e8e8'};
+            `;
         };
 
         button.onmouseleave = () => {
             if (!hasApiKey) return;
-            if (state.isPlaying) return;
-            button.style.backgroundColor = state.isEnabled ? '#0066ff' : '#f0f0f0';
+            if (state.isPlaying) {
+                button.style.cssText = `${BUTTONS.CONTROL.baseStyle} ${BUTTONS.CONTROL.states.PLAYING.style}`;
+                return;
+            }
+            button.style.cssText = `${BUTTONS.CONTROL.baseStyle} ${state.isEnabled ? BUTTONS.CONTROL.states.ENABLED.style : BUTTONS.CONTROL.states.DISABLED.style}`;
         };
 
         const originalOnClick = button.onclick;
@@ -661,10 +699,10 @@ function createControlButton() {
             
             originalOnClick?.();
             
-            speechBubble.style.display = state.isEnabled ? 'flex' : 'none';
+            updateSpeechBubbleVisibility(state.isEnabled);
         };
 
-        speechBubble.style.display = state.isEnabled ? 'flex' : 'none';
+        updateSpeechBubbleVisibility(state.isEnabled);
     });
 
     buttonContainer.appendChild(button);
@@ -695,11 +733,10 @@ function stopAllAudio(keepEnabled = true) {
     // Update button appearance
     const controlButton = document.getElementById('voice-chat-control-button');
     if (controlButton) {
-        if (keepEnabled && state.isEnabled) {
-            updateButtonAppearance(controlButton, false, true);
-        } else if (!keepEnabled) {
-            updateButtonAppearance(controlButton, false, false);
+        if (!keepEnabled) {
+            state.isEnabled = false;
         }
+        updateButtonAppearance(controlButton, false, state.isEnabled);
     }
 
     // Reset all processing flags
@@ -779,5 +816,12 @@ function updateButtonAppearance(button, isPlaying, isEnabled) {
     const buttonConfig = BUTTONS.CONTROL.states[stateKey];
     button.innerHTML = `${buttonConfig.icon}${buttonConfig.text}`;
     button.style.cssText = BUTTONS.CONTROL.baseStyle + buttonConfig.style;
+}
+
+function updateSpeechBubbleVisibility(isEnabled) {
+    const speechBubble = document.querySelector('#voice-chat-control-button')?.parentElement?.querySelector('div');
+    if (speechBubble) {
+        speechBubble.style.display = isEnabled ? 'flex' : 'none';
+    }
 }
 
