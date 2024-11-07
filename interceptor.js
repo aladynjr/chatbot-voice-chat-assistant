@@ -7,6 +7,12 @@ let isMessageComplete = false;
 const chunkQueue = [];
 let isProcessing = false;
 
+// Add this at the top with other state variables
+let shouldIgnoreProcessing = false;
+
+// Add currentReader variable at the top
+let currentReader = null;
+
 // Function to reset the state for a new chat
 const resetChatState = () => {
     console.log('Resetting chat state');
@@ -14,6 +20,8 @@ const resetChatState = () => {
     sentSentences.clear(); // Clear the sent sentences
     isMessageComplete = false; // Reset completion flag
     chunkQueue.length = 0; // Clear the chunk queue
+    shouldIgnoreProcessing = false; // Reset the ignore flag
+    isProcessing = false;
 };
 
 // Helper function to extract text from different chunk formats
@@ -99,11 +107,15 @@ const processQueue = async () => {
 
 // Add a check to ensure that the chunk is valid JSON before parsing
 const processEventData = (data) => {
+    if (shouldIgnoreProcessing) {
+        console.log('Skipping chunk processing - shouldIgnoreProcessing is true');
+        return;
+    }
+    
     try {
         const parsed = JSON.parse(data);
-        if (parsed.v?.message?.author?.role === 'user') return; // Skip user messages
+        if (parsed.v?.message?.author?.role === 'user') return;
 
-        // Check for completion in message metadata
         const isComplete = parsed.v?.message?.metadata?.is_complete;
         if (isComplete) {
             isMessageComplete = true;
@@ -111,11 +123,9 @@ const processEventData = (data) => {
 
         const chunkText = extractChunkText(parsed);
         if (chunkText) {
-            // Add the chunk to the queue
             chunkQueue.push({ chunk: chunkText, isLast: isComplete });
             processQueue();
         }
-
     } catch (e) {
         console.error('Error parsing chunk:', e);
     }
@@ -128,12 +138,18 @@ window.fetch = async function(...args) {
     if (!args[0].includes('/backend-api/conversation')) return response;
 
     const [stream1, stream2] = response.body.tee();
-    const reader = stream2.getReader();
+    currentReader = stream2.getReader();  // Store the reader
 
     (async () => {
         try {
             while (true) {
-                const {done, value} = await reader.read();
+                if (shouldIgnoreProcessing) {
+                    currentReader.cancel();
+                    currentReader = null;
+                    break;
+                }
+                
+                const {done, value} = await currentReader.read();
                 if (done) break;
 
                 const chunk = new TextDecoder().decode(value);
@@ -157,6 +173,8 @@ window.fetch = async function(...args) {
             }
         } catch (error) {
             if (error.name !== 'AbortError') console.error('Stream processing error:', error);
+        } finally {
+            currentReader = null;
         }
     })();
 
@@ -167,16 +185,33 @@ window.fetch = async function(...args) {
 window.addEventListener('popstate', resetChatState); // Reset when the URL changes
 
 // Expose a method to clear the interceptor state
-window.clearInterceptorState = () => {
+window.clearInterceptorState = (immediate = false) => {
     console.log('Clearing interceptor state');
-    resetChatState();
+    shouldIgnoreProcessing = true;  // Set to true temporarily
+    
+    // Always clear everything immediately when called
     chunkQueue.length = 0;
+    pendingText = '';
+    sentSentences.clear();
+    isMessageComplete = true;
     isProcessing = false;
+    
+    // Cancel any ongoing fetch reader
+    if (currentReader) {
+        currentReader.cancel();
+        currentReader = null;
+    }
+
+    // Reset shouldIgnoreProcessing after a short delay
+    setTimeout(() => {
+        shouldIgnoreProcessing = false;
+        console.log('Reset shouldIgnoreProcessing to false');
+    }, 100);
 };
 
 // Listen for messages from content script
 window.addEventListener('message', (event) => {
     if (event.data.type === 'CLEAR_INTERCEPTOR_STATE') {
-        window.clearInterceptorState();
+        window.clearInterceptorState(event.data.immediate);
     }
 });

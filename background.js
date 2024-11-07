@@ -112,12 +112,16 @@ function stopAllRequests() {
         abortController = new AbortController();
     }
     
+    // Clear all pending requests immediately
     requestQueue.length = 0;
     processingCount = 0;
-    
     activeStreams.clear();
-    
     sequenceNumber = 0;
+
+    // Reject any pending responses
+    requestQueue.forEach(request => {
+        request.sendResponse({ error: 'Request aborted', sequence: request.sequence });
+    });
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
