@@ -53,21 +53,28 @@ const extractChunkText = (parsed) => {
 const cleanChunkText = (text) => {
     return text
         .replace(/```[\s\S]*?```/g, '') // Remove code blocks
-        .replace(/`([^`]+)`/g, '$1')     // Remove inline code
-        .replace(/\*\*([^*]+)\*\*/g, '$1') // Remove bold
-        .replace(/\*([^*]+)\*/g, '$1')     // Remove italic
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove links
-        .replace(/#{1,6}\s/g, '')         // Remove headers
-        .replace(/>\s[^\n]+/g, '')        // Remove blockquotes
-        .replace(/【[^】]+】/g, '')        // Remove sources in【】brackets
-        .replace(/\[\d+\†source\]/g, '')   // Remove [number†source] format
-        .trim();
+        .replace(/\*\*([^*]+?)\*\*/g, '$1')     // Keep bold text content
+        .replace(/\*([^*]+?)\*/g, '$1')         // Keep italic text content
+        .replace(/`([^`]+)`/g, '$1')            // Keep inline code content
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Keep link text
+        .replace(/^#{1,6}\s+(.+)$/gm, '$1')     // Keep header content
+        .replace(/>\s*(.+)/g, '$1')             // Keep blockquote content
+        .replace(/【[^】]+】/g, '')             // Remove sources in【】brackets
+        .replace(/\[\d+\†source\]/g, '')        // Remove [number†source] format
+        .replace(/^\d+\.\s+/gm, '')            // Remove numbered list markers
+        .replace(/([a-z])([A-Z])/g, '$1 $2')   // Add space between words that are incorrectly joined
+        .trim() + ' ';                          // Add empty space at the end
 };
 
 // Helper function to split text into sentences
 const splitIntoSentences = (text) => {
-    // Split based on sentence-ending punctuation followed by a space or end of string
-    return text.match(/[^.!?]+[.!?]+(\s|$)/g) || [];
+    // More comprehensive sentence splitting that looks for actual sentence boundaries
+    const sentences = text.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) || [];
+    return sentences.filter(sentence => {
+        const cleaned = sentence.trim();
+        // Filter out single letters or very short fragments
+        return cleaned.length > 2 && !/^[A-Z]\.$/.test(cleaned);
+    });
 };
 
 // Function to process the chunk queue
@@ -86,30 +93,31 @@ const processQueue = async () => {
         const sentences = splitIntoSentences(pendingText);
         let lastIndex = 0;
 
-        sentences.forEach(sentence => {
-            const trimmedSentence = sentence.trim();
-            if (trimmedSentence && !sentSentences.has(trimmedSentence)) {
-                // Send the sentence
-                window.postMessage({ type: 'CHATGPT_RESPONSE', chunk: trimmedSentence }, '*');
-                console.log('Chunk sent successfully:', trimmedSentence);
-                sentSentences.add(trimmedSentence);
-                // Remove the sent sentence from pendingText
-                lastIndex += sentence.length;
-            }
-        });
+        // Only process sentences if we have complete ones or this is the last chunk
+        if (sentences.length > 0 && (sentences.length > 1 || isLast)) {
+            sentences.forEach((sentence, index) => {
+                // Only process if it's not the last sentence or if this is the last chunk
+                if (index < sentences.length - 1 || isLast) {
+                    const trimmedSentence = sentence.trim();
+                    if (trimmedSentence && !sentSentences.has(trimmedSentence)) {
+                        window.postMessage({ type: 'CHATGPT_RESPONSE', chunk: trimmedSentence }, '*');
+                        console.log('Chunk sent successfully:', trimmedSentence);
+                        sentSentences.add(trimmedSentence);
+                        lastIndex += sentence.length;
+                    }
+                }
+            });
 
-        pendingText = pendingText.slice(lastIndex).trim();
+            pendingText = pendingText.slice(lastIndex).trim();
+        }
 
+        // Handle the last chunk if there's remaining text
         if (isLast && pendingText) {
             const trimmedPending = pendingText.trim();
             if (trimmedPending && !sentSentences.has(trimmedPending)) {
                 console.log('Force sending final chunk:', trimmedPending);
                 window.postMessage({ type: 'CHATGPT_RESPONSE', chunk: trimmedPending }, '*');
                 sentSentences.add(trimmedPending);
-                pendingText = '';
-                console.log('Final chunk sent and cleared');
-            } else {
-                console.log('Final chunk already sent or empty, clearing pendingText');
                 pendingText = '';
             }
         }
