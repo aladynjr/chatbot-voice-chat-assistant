@@ -13,6 +13,11 @@ let shouldIgnoreProcessing = false;
 // Add currentReader variable at the top
 let currentReader = null;
 
+// Variable to track the current message's author role
+let currentAuthorRole = null;
+let currentOperation = null;  // Add this
+let isOperationData = false; // Add this
+
 // Function to reset the state for a new chat
 const resetChatState = () => {
     console.log('Resetting chat state');
@@ -22,6 +27,10 @@ const resetChatState = () => {
     chunkQueue.length = 0; // Clear the chunk queue
     shouldIgnoreProcessing = false; // Reset the ignore flag
     isProcessing = false;
+    currentAuthorRole = null; // Reset the author role tracker
+    currentOperation = null;    // Add this
+    isOperationData = false;   // Add this
+
 };
 
 // Helper function to extract text from different chunk formats
@@ -105,7 +114,13 @@ const processQueue = async () => {
     isProcessing = false;
 };
 
-// Add a check to ensure that the chunk is valid JSON before parsing
+// Add this helper function to check if a path is a valid content parts path
+const isValidContentPath = (path) => {
+    if (!path) return false;
+    return /^\/message\/content\/parts\/\d+$/.test(path);
+};
+
+// Update processEventData function
 const processEventData = (data) => {
     if (shouldIgnoreProcessing) {
         console.log('Skipping chunk processing - shouldIgnoreProcessing is true');
@@ -114,7 +129,56 @@ const processEventData = (data) => {
     
     try {
         const parsed = JSON.parse(data);
-        if (parsed.v?.message?.author?.role === 'user') return;
+        
+        // Track the current message's author role
+        if (parsed.v?.message?.author?.role) {
+            currentAuthorRole = parsed.v.message.author.role;
+            // Reset operation state when a new message starts
+            currentOperation = null;
+            isOperationData = false;
+        }
+
+        // Check if this is the start of an operation
+        if (parsed.p === '/message/content/text' && parsed.o === 'append') {
+            const value = parsed.v;
+            if (value.includes('search(')) {
+                currentOperation = 'search';
+                isOperationData = true;
+                return;
+            } else if (value.includes('mclick')) {
+                currentOperation = 'mclick';
+                isOperationData = true;
+                return;
+            }
+        }
+
+        // If we're in an operation and this is a simple value continuation, skip it
+        if (currentOperation && parsed.v && typeof parsed.v === 'string' && !parsed.p) {
+            return;
+        }
+
+        // Check for operation completion
+        if (currentOperation && parsed.p === '' && parsed.o === 'patch') {
+            const patchData = Array.isArray(parsed.v) ? parsed.v : [parsed.v];
+            const hasEndMarker = patchData.some(patch => 
+                patch.p === '/message/status' && patch.v === 'finished_successfully'
+            );
+            if (hasEndMarker) {
+                currentOperation = null;
+                isOperationData = false;
+                return;
+            }
+        }
+
+        // Only process chunks from the assistant and when not in an operation
+        if (currentAuthorRole !== 'assistant' || isOperationData) {
+            return;
+        }
+
+        // If there's a path (p) field, check if it's a valid content parts path
+        if (parsed.p && !isValidContentPath(parsed.p)) {
+            return;
+        }
 
         const isComplete = parsed.v?.message?.metadata?.is_complete;
         if (isComplete) {
@@ -168,7 +232,7 @@ window.fetch = async function(...args) {
                         continue;
                     }
 
-                    processEventData(data); // Use the new function to process event data
+                    processEventData(data); // Use the updated function to process event data
                 }
             }
         } catch (error) {
@@ -195,6 +259,7 @@ window.clearInterceptorState = (immediate = false) => {
     sentSentences.clear();
     isMessageComplete = true;
     isProcessing = false;
+    currentAuthorRole = null; // Reset the author role tracker
     
     // Cancel any ongoing fetch reader
     if (currentReader) {
