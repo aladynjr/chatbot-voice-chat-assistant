@@ -4,6 +4,7 @@ let requestQueue = [];
 let processingCount = 0;
 const MAX_CONCURRENT_REQUESTS = 1;
 let sequenceNumber = 0;
+let currentMessageId = null;
 
 async function streamSpeech(text, streamId, sequence) {
     const startTime = performance.now();
@@ -26,13 +27,23 @@ async function streamSpeech(text, streamId, sequence) {
                 'xi-api-key': apiKey
             },
             body: JSON.stringify({
+                // The text to convert to speech
                 text: text,
-                model_id: 'eleven_turbo_v2',
+                // The model ID to use - eleven_turbo_v2 is the latest and fastest model
+                model_id: 'eleven_turbo_v2_5',
                 voice_settings: {
+                    // Controls how much the voice will vary across re-generations 
+                    // Range: 0-1, Higher values = more stable/consistent speech
                     stability: 0.5,
-                    similarity_boost: 0.2,
+                    // Controls how similar the output is to the original voice
+                    // Range: 0-1, Higher values = more similar to original voice
+                    similarity_boost: 0.9,
+                    // Controls speaking style variations like emphasis and emotions
+                    // Range: 0-1, Higher values = more expressive speech
                     style: 1,
-                    use_speaker_boost: true
+                    // Enhances voice clarity and reduces distortions
+                    // Boolean: true/false
+                    use_speaker_boost: false
                 }
             }),
             signal: abortController.signal
@@ -88,14 +99,27 @@ function cleanupStream(streamId) {
 
 async function processQueue() {
     while (requestQueue.length > 0 && processingCount < MAX_CONCURRENT_REQUESTS) {
-        const { text, streamId, sendResponse, sequence } = requestQueue.shift();
+        const { text, streamId, messageId, sendResponse, sequence } = requestQueue.shift();
+        
+        // Skip if this request belongs to an old message
+        if (messageId !== currentMessageId) {
+            console.log(`Skipping sequence ${sequence} - belongs to old message ${messageId}`);
+            sendResponse({ error: 'Outdated message', sequence });
+            continue;
+        }
+
         processingCount++;
-        console.log(`Processing sequence ${sequence}: ${text}`);
+        console.log(`Processing sequence ${sequence}: ${text} (Message ID: ${messageId})`);
         
         try {
             const result = await streamSpeech(text, streamId, sequence);
-            sendResponse({ ...result, sequence });
-            console.log(`Completed sequence ${sequence}`);
+            // Only send response if the message ID is still current
+            if (messageId === currentMessageId) {
+                sendResponse({ ...result, sequence, messageId });
+                console.log(`Completed sequence ${sequence} for message ${messageId}`);
+            } else {
+                console.log(`Discarding completed sequence ${sequence} - message ${messageId} is no longer current`);
+            }
         } catch (error) {
             sendResponse({ error: error.message, sequence });
             console.error(`Error in sequence ${sequence}:`, error);
@@ -112,13 +136,12 @@ function stopAllRequests() {
         abortController = new AbortController();
     }
     
-    // Clear all pending requests immediately
+    currentMessageId = null;  // Reset current message ID
     requestQueue.length = 0;
     processingCount = 0;
     activeStreams.clear();
     sequenceNumber = 0;
 
-    // Reject any pending responses
     requestQueue.forEach(request => {
         request.sendResponse({ error: 'Request aborted', sequence: request.sequence });
     });
@@ -126,10 +149,16 @@ function stopAllRequests() {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'CREATE_SPEECH') {
+        // Set current message ID if this is a new message
+        if (message.messageId) {
+            currentMessageId = message.messageId;
+        }
+
         const currentSequence = sequenceNumber++;
         requestQueue.push({
             text: message.text,
             streamId: message.streamId,
+            messageId: message.messageId,  // Store message ID with request
             sendResponse,
             sequence: currentSequence
         });

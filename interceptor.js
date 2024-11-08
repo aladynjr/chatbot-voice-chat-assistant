@@ -45,8 +45,9 @@ const extractChunkText = (parsed) => {
             .map(p => p.v)
             .join('');
     }
-    // Ensure there's a space at the end of the chunk
-    return text ? text.trim() + ' ' : '';
+    text = text.trim();
+    // Add space at start if the text starts with a capital letter
+    return text ? (/^[A-Z]/.test(text) ? ' ' + text : text) : '';
 };
 
 // Remove markdown function implementation
@@ -123,27 +124,7 @@ const removeMarkdown = (md, options = {}) => {
     }
 };
 
-// Update the cleanChunkText function to use our new removeMarkdown function
-const cleanChunkText = (text) => {
-    // First handle code blocks and special cases that we want to preserve
-    const preservedText = text
-        .replace(/```[\s\S]*?```/g, '') // Remove code blocks separately
-        .replace(/【[^】]+】/g, '')      // Remove sources in【】brackets
-        .replace(/\[\d+\†source\]/g, ''); // Remove [number†source] format
 
-    // Use our removeMarkdown function
-    const cleanedText = removeMarkdown(preservedText, {
-        stripListLeaders: true,
-        listUnicodeChar: '',
-        gfm: true,
-        useImgAltText: true
-    });
-
-    // Handle spacing and punctuation
-    return cleanedText
-        .replace(/([a-z])([A-Z])/g, '$1 $2')   // Add space between camelCase
-        .trim() + ' ';
-};
 
 // Helper function to split text into sentences
 const splitIntoSentences = (text) => {
@@ -181,11 +162,9 @@ const processQueue = async () => {
 
         if (cleanedChunk.length <= 1) continue;
 
-        // Ensure there's a space before appending if needed
-        if (pendingText.length > 0 && !pendingText.endsWith(' ')) {
-            pendingText += ' ';
-        }
-        pendingText += cleanedChunk;
+        // Add space at start of chunk if it starts with a capital letter
+        const shouldAddSpace = /^[A-Z]/.test(cleanedChunk);
+        pendingText += shouldAddSpace ? ' ' + cleanedChunk : cleanedChunk;
 
         console.log('Current pendingText:', pendingText);
         

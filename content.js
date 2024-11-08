@@ -8,6 +8,7 @@ const state = {
     recognition: null,
     isRecognitionActive: false,
     currentSequence: 0,
+    currentMessageId: null,
 };
 
 const BUTTONS = {
@@ -244,6 +245,10 @@ class TTSQueue {
     }
 
     async enqueue(text) {
+        if (!state.currentMessageId) {
+            state.currentMessageId = Date.now().toString();
+        }
+        
         this.queue.push(text);
         await this.process();
     }
@@ -281,7 +286,8 @@ class TTSQueue {
         return chrome.runtime.sendMessage({
             type: 'CREATE_SPEECH',
             text,
-            streamId: Date.now().toString()
+            streamId: Date.now().toString(),
+            messageId: state.currentMessageId
         });
     }
 
@@ -651,6 +657,8 @@ function createControlButton() {
 }
 
 function stopAllAudio(keepEnabled = true) {
+    state.currentMessageId = null;
+    
     // First stop all audio and clear queues
     audioQueue.stopAll();
     ttsQueue.clear();
