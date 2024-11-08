@@ -491,7 +491,7 @@ function createControlButton() {
     buttonContainer.style.cssText = `
         position: fixed;
         bottom: 24px;
-        right: 24px;
+        right: 84px;
         z-index: 10000;
         display: flex;
         align-items: center;
@@ -580,25 +580,54 @@ function createControlButton() {
             const tooltip = document.createElement('div');
             tooltip.style.cssText = `
                 position: absolute;
-                top: -40px;
-                left: 50%;
-                transform: translateX(-50%);
-                background-color: rgba(31, 41, 55, 0.9);
+                bottom: calc(100% + 10px);
+                right: 0;
+                background-color: rgba(31, 41, 55, 0.95);
                 color: #FFFFFF;
-                padding: 6px 12px;
-                border-radius: 6px;
-                font-size: 12px;
+                padding: 16px;
+                border-radius: 8px;
+                font-size: 13px;
                 pointer-events: none;
                 opacity: 0;
                 transition: opacity 0.2s ease;
-                white-space: nowrap;
+                white-space: normal;
                 z-index: 1001;
+                width: 280px;
+                line-height: 1.4;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             `;
-            tooltip.textContent = 'Please set your ElevenLabs API key in the extension popup';
-            button.appendChild(tooltip);
+            
+            tooltip.innerHTML = `
+                <div style="font-weight: 600; margin-bottom: 8px; color: #22D3EE;">
+                    ElevenLabs API Key Required
+                </div>
+                <div style="margin-bottom: 12px;">
+                    To use voice chat features, you'll need to set up your ElevenLabs API key:
+                </div>
+                <ol style="margin: 0; padding-left: 20px;">
+                    <li style="margin-bottom: 6px;">Click the extension icon in your browser toolbar</li>
+                    <li style="margin-bottom: 6px;">Enter your API key in the popup window</li>
+                    <li>Click Save to enable voice features</li>
+                </ol>
+                <div style="margin-top: 12px; font-size: 12px; color: #9CA3AF;">
+                    Don't have an API key? 
+                    <a href="https://elevenlabs.io/sign-up" target="_blank" 
+                       style="color: #22D3EE; text-decoration: underline; pointer-events: auto;">
+                       Sign up for ElevenLabs
+                    </a>
+                </div>
+            `;
+            
+            const tooltipWrapper = document.createElement('div');
+            tooltipWrapper.style.position = 'relative';
+            tooltipWrapper.appendChild(tooltip);
+            button.appendChild(tooltipWrapper);
 
             button.onmouseenter = () => tooltip.style.opacity = '1';
             button.onmouseleave = () => tooltip.style.opacity = '0';
+            
+            button.style.opacity = '0.6';
+            button.style.cursor = 'not-allowed';
             return;
         }
 
