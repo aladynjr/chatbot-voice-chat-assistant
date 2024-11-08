@@ -128,18 +128,19 @@ const removeMarkdown = (md, options = {}) => {
 
 // Helper function to split text into sentences
 const splitIntoSentences = (text) => {
-    // More comprehensive sentence splitting
-    const sentences = text.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) || [];
+    // More comprehensive sentence splitting with lookahead for common abbreviations
+    const sentences = text.match(/[^.!?]+(?:[.!?](?:[ \n\r]|$))+/g) || [];
     return sentences
         .map(sentence => sentence.trim())
         .filter(sentence => {
-            // Filter out single letters or very short fragments
-            return sentence.length > 2 && 
+            // Enhanced filtering to avoid short or incomplete sentences
+            return sentence.length > 10 && // Increased minimum length
                    !/^[A-Z]\.$/.test(sentence) &&
-                   !/^\s*$/.test(sentence);
+                   !/^\s*$/.test(sentence) &&
+                   !/^[^a-zA-Z]*$/.test(sentence) && // Must contain some letters
+                   !sentence.endsWith('...'); // Avoid incomplete sentences
         });
 };
-
 // Function to process the chunk queue
 const processQueue = async () => {
     if (isProcessing || chunkQueue.length === 0) {
@@ -168,46 +169,27 @@ const processQueue = async () => {
 
         console.log('Current pendingText:', pendingText);
         
-        // Only remove markdown when we have complete sentences or it's the last chunk
-        let processedText = pendingText;
-        if (isLast || pendingText.match(/[.!?]+(?:\s+|$)/)) {
-            processedText = removeMarkdown(pendingText, {
-                stripListLeaders: true,
-                listUnicodeChar: '',
-                gfm: true,
-                useImgAltText: true
-            });
-        }
+        // Only process if we have a complete sentence or it's the last chunk
+        if (isLast || pendingText.match(/[.!?](?:[ \n\r]|$)/)) {
+            let processedText = removeMarkdown(pendingText);
+            const sentences = splitIntoSentences(processedText);
+            let lastIndex = 0;
 
-        const sentences = splitIntoSentences(processedText);
-        let lastIndex = 0;
-
-        // Only process sentences if we have complete ones or this is the last chunk
-        if (sentences.length > 0 && (sentences.length > 1 || isLast)) {
-            sentences.forEach((sentence, index) => {
-                // Only process if it's not the last sentence or if this is the last chunk
-                if (index < sentences.length - 1 || isLast) {
-                    const trimmedSentence = sentence.trim();
-                    if (trimmedSentence && !sentSentences.has(trimmedSentence)) {
-                        window.postMessage({ type: 'CHATGPT_RESPONSE', chunk: trimmedSentence }, '*');
-                        console.log('Chunk sent successfully:', trimmedSentence);
-                        sentSentences.add(trimmedSentence);
-                        lastIndex += sentence.length;
+            // Only process complete sentences
+            if (sentences.length > 0) {
+                sentences.forEach((sentence, index) => {
+                    // Only process if it's a complete sentence
+                    if (sentence.match(/[.!?](?:[ \n\r]|$)/)) {
+                        const trimmedSentence = sentence.trim();
+                        if (trimmedSentence && !sentSentences.has(trimmedSentence)) {
+                            window.postMessage({ type: 'CHATGPT_RESPONSE', chunk: trimmedSentence }, '*');
+                            sentSentences.add(trimmedSentence);
+                            lastIndex = pendingText.indexOf(sentence) + sentence.length;
+                        }
                     }
-                }
-            });
+                });
 
-            pendingText = pendingText.slice(lastIndex).trim();
-        }
-
-        // Handle the last chunk if there's remaining text
-        if (isLast && pendingText) {
-            const trimmedPending = pendingText.trim();
-            if (trimmedPending && !sentSentences.has(trimmedPending)) {
-                console.log('Force sending final chunk:', trimmedPending);
-                window.postMessage({ type: 'CHATGPT_RESPONSE', chunk: trimmedPending }, '*');
-                sentSentences.add(trimmedPending);
-                pendingText = '';
+                pendingText = pendingText.slice(lastIndex).trim();
             }
         }
     }
