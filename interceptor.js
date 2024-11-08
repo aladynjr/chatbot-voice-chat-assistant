@@ -49,26 +49,100 @@ const extractChunkText = (parsed) => {
     return text ? text.trim() + ' ' : '';
 };
 
-// Clean text helper
+// Remove markdown function implementation
+const removeMarkdown = (md, options = {}) => {
+    // Default options
+    const defaults = {
+        listUnicodeChar: false,
+        stripListLeaders: true,
+        gfm: true,
+        useImgAltText: true,
+        abbr: false,
+        replaceLinksWithURL: false,
+        htmlTagsToSkip: []
+    };
+    
+    options = { ...defaults, ...options };
+    let output = md || '';
+
+    try {
+        // Remove horizontal rules
+        output = output.replace(/^(-\s*?|\*\s*?|_\s*?){3,}\s*/gm, '');
+
+        // Handle list leaders
+        if (options.stripListLeaders) {
+            if (options.listUnicodeChar) {
+                output = output.replace(/^([\s\t]*)([\*\-\+]|\d+\.)\s+/gm, options.listUnicodeChar + ' $1');
+            } else {
+                output = output.replace(/^([\s\t]*)([\*\-\+]|\d+\.)\s+/gm, '$1');
+            }
+        }
+
+        // Handle GFM specific features
+        if (options.gfm) {
+            output = output
+                .replace(/\n={2,}/g, '\n')          // Header
+                .replace(/~{3}.*\n/g, '')           // Fenced codeblocks
+                .replace(/~~/g, '')                 // Strikethrough
+                .replace(/`{3}.*\n/g, '');          // Fenced codeblocks
+        }
+
+        output = output
+            // Remove HTML tags
+            .replace(/<[^>]*>/g, '')
+            // Remove setext-style headers
+            .replace(/^[=\-]{2,}\s*$/g, '')
+            // Remove footnotes
+            .replace(/\[\^.+?\](\: .*?$)?/g, '')
+            .replace(/\s{0,2}\[.*?\]: .*?$/g, '')
+            // Remove images
+            .replace(/\!\[(.*?)\][\[\(].*?[\]\)]/g, options.useImgAltText ? '$1' : '')
+            // Remove inline links
+            .replace(/\[([^\]]*?)\][\[\(].*?[\]\)]/g, options.replaceLinksWithURL ? '$2' : '$1')
+            // Remove blockquotes
+            .replace(/^(\n)?\s{0,3}>\s?/gm, '$1')
+            // Remove reference-style links
+            .replace(/^\s{1,2}\[(.*?)\]: (\S+)( ".*?")?\s*$/g, '')
+            // Remove atx-style headers
+            .replace(/^(\n)?\s{0,}#{1,6}\s*( (.+))? +#+$|^(\n)?\s{0,}#{1,6}\s*( (.+))?$/gm, '$1$3$4$6')
+            // Remove * emphasis
+            .replace(/([\*]+)(\S)(.*?\S)??\1/g, '$2$3')
+            // Remove _ emphasis with special rules
+            .replace(/(^|\W)([_]+)(\S)(.*?\S)??\2($|\W)/g, '$1$3$4$5')
+            // Remove code blocks
+            .replace(/(`{3,})(.*?)\1/gm, '$2')
+            // Remove inline code
+            .replace(/`(.+?)`/g, '$1')
+            // Replace strike through
+            .replace(/~(.*?)~/g, '$1');
+
+        return output;
+    } catch (e) {
+        console.error("remove-markdown encountered error:", e);
+        return md;
+    }
+};
+
+// Update the cleanChunkText function to use our new removeMarkdown function
 const cleanChunkText = (text) => {
-    return text
-        .replace(/```[\s\S]*?```/g, '') // Remove code blocks
-        .replace(/\*\*([^*]+?)\*\*/g, '$1')     // Keep bold text content
-        .replace(/\*([^*]+?)\*/g, '$1')         // Keep italic text content
-        .replace(/_([^_]+?)_/g, '$1')           // Keep underscore-italic text content
-        .replace(/`([^`]+)`/g, '$1')            // Keep inline code content
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Keep link text
-        .replace(/^#{1,6}\s+(.+)$/gm, '$1')     // Keep header content
-        .replace(/>\s*(.+)/g, '$1')             // Keep blockquote content
-        .replace(/【[^】]+】/g, '')             // Remove sources in【】brackets
-        .replace(/\[\d+\†source\]/g, '')        // Remove [number†source] format
-        .replace(/^\d+\.\s+/gm, '')            // Remove numbered list markers
+    // First handle code blocks and special cases that we want to preserve
+    const preservedText = text
+        .replace(/```[\s\S]*?```/g, '') // Remove code blocks separately
+        .replace(/【[^】]+】/g, '')      // Remove sources in【】brackets
+        .replace(/\[\d+\†source\]/g, ''); // Remove [number†source] format
+
+    // Use our removeMarkdown function
+    const cleanedText = removeMarkdown(preservedText, {
+        stripListLeaders: true,
+        listUnicodeChar: '',
+        gfm: true,
+        useImgAltText: true
+    });
+
+    // Handle spacing and punctuation
+    return cleanedText
         .replace(/([a-z])([A-Z])/g, '$1 $2')   // Add space between camelCase
-        .replace(/([.!?])"(\s|$)/g, '"$1$2')   // Fix quote placement after punctuation
-        .replace(/(\w)(["""])/g, '$1 $2')      // Add space before quotes
-        .replace(/(["""])(\w)/g, '$1 $2')      // Add space after quotes
-        .replace(/(\w)([.!?])(\w)/g, '$1$2 $3') // Add space after punctuation between words
-        .trim() + ' ';                          // Add space at the end
+        .trim() + ' ';
 };
 
 // Helper function to split text into sentences
@@ -95,13 +169,16 @@ const processQueue = async () => {
         return;
     }
     
-    console.log('[Interceptor] Starting queue processing');
     isProcessing = true;
 
     while (chunkQueue.length > 0) {
         const { chunk, isLast } = chunkQueue.shift();
 
-        const cleanedChunk = cleanChunkText(chunk);
+        // Remove the markdown cleaning here, just do basic cleaning
+        const cleanedChunk = chunk
+            .replace(/【[^】]+】/g, '')      // Remove sources in【】brackets
+            .replace(/\[\d+\†source\]/g, ''); // Remove [number†source] format
+
         if (cleanedChunk.length <= 1) continue;
 
         // Ensure there's a space before appending if needed
@@ -111,8 +188,19 @@ const processQueue = async () => {
         pendingText += cleanedChunk;
 
         console.log('Current pendingText:', pendingText);
+        
+        // Only remove markdown when we have complete sentences or it's the last chunk
+        let processedText = pendingText;
+        if (isLast || pendingText.match(/[.!?]+(?:\s+|$)/)) {
+            processedText = removeMarkdown(pendingText, {
+                stripListLeaders: true,
+                listUnicodeChar: '',
+                gfm: true,
+                useImgAltText: true
+            });
+        }
 
-        const sentences = splitIntoSentences(pendingText);
+        const sentences = splitIntoSentences(processedText);
         let lastIndex = 0;
 
         // Only process sentences if we have complete ones or this is the last chunk
