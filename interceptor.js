@@ -87,11 +87,20 @@ const splitIntoSentences = (text) => {
 
 // Function to process the chunk queue
 const processQueue = async () => {
-    if (isProcessing || chunkQueue.length === 0) return;
+    if (isProcessing || chunkQueue.length === 0) {
+        console.log('[Interceptor] Queue processing skipped:', { 
+            isProcessing, 
+            queueLength: chunkQueue.length 
+        });
+        return;
+    }
+    
+    console.log('[Interceptor] Starting queue processing');
     isProcessing = true;
 
     while (chunkQueue.length > 0) {
         const { chunk, isLast } = chunkQueue.shift();
+
         const cleanedChunk = cleanChunkText(chunk);
         if (cleanedChunk.length <= 1) continue;
 
@@ -148,19 +157,18 @@ const isValidContentPath = (path) => {
 // Update processEventData function
 const processEventData = (data) => {
     if (shouldIgnoreProcessing) {
-        console.log('Skipping chunk processing - shouldIgnoreProcessing is true');
+        console.log('[Interceptor] Skipping chunk - shouldIgnoreProcessing is true');
         return;
     }
     
     try {
         const parsed = JSON.parse(data);
+  
         
         // Track the current message's author role
         if (parsed.v?.message?.author?.role) {
             currentAuthorRole = parsed.v.message.author.role;
-            // Reset operation state when a new message starts
-            currentOperation = null;
-            isOperationData = false;
+            // console.log('[Interceptor] Author role changed:', currentAuthorRole);
         }
 
         // Check if this is the start of an operation
@@ -212,27 +220,39 @@ const processEventData = (data) => {
 
         const chunkText = extractChunkText(parsed);
         if (chunkText) {
+            console.log('[Interceptor] Extracted chunk text:', chunkText);
             chunkQueue.push({ chunk: chunkText, isLast: isComplete });
             processQueue();
         }
     } catch (e) {
-        console.error('Error parsing chunk:', e);
+        console.error('[Interceptor] Error parsing chunk:', e);
     }
 };
 
-// Override the fetch function
+// Update the fetch override with more specific request matching
 window.fetch = async function(...args) {
+    const [url, options] = args;
+    
+    // Only intercept POST requests to the exact conversation endpoint
+    const shouldIntercept = 
+        url.endsWith('/backend-api/conversation') && 
+        options?.method === 'POST';
+    
     const response = await originalFetch.apply(this, args);
 
-    if (!args[0].includes('/backend-api/conversation')) return response;
-
+    if (!shouldIntercept) return response;
+    
     const [stream1, stream2] = response.body.tee();
-    currentReader = stream2.getReader();  // Store the reader
+    currentReader = stream2.getReader();
 
     (async () => {
         try {
             while (true) {
                 if (shouldIgnoreProcessing || !currentReader) {
+                    console.log('[Interceptor] Stream processing stopped:', { 
+                        shouldIgnoreProcessing, 
+                        hasReader: !!currentReader 
+                    });
                     if (currentReader) {
                         currentReader.cancel();
                         currentReader = null;
@@ -242,7 +262,8 @@ window.fetch = async function(...args) {
                 
                 const {done, value} = await currentReader.read();
                 if (done) {
-                    currentReader = null;  // Clean up the reader when done
+                    console.log('[Interceptor] Stream complete');
+                    currentReader = null;
                     break;
                 }
 
@@ -254,35 +275,26 @@ window.fetch = async function(...args) {
                     const data = dataLine.slice(6);
                     if (data === '[DONE]') {
                         if (pendingText) {
-                            // Add the remaining text as the last chunk
                             chunkQueue.push({ chunk: pendingText, isLast: true });
                             processQueue();
                         }
-                        resetChatState(); // Reset state after sending the last chunk
+                        resetChatState();
                         continue;
                     }
 
-                    processEventData(data); // Use the updated function to process event data
+                    processEventData(data);
                 }
             }
         } catch (error) {
-            if (error.name !== 'AbortError') {
-                console.error('Stream processing error:', error);
-            }
-            if (currentReader) {
-                currentReader.cancel();
-                currentReader = null;
-            }
-        } finally {
-            currentReader = null;
+            console.error('[Interceptor] Stream processing error:', error);
         }
     })();
 
     return new Response(stream1, response);
 };
 
-// Reset state on URL change
-window.addEventListener('popstate', resetChatState); // Reset when the URL changes
+
+
 
 // Expose a method to clear the interceptor state
 window.clearInterceptorState = (immediate = false) => {
