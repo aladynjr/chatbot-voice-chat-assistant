@@ -14,62 +14,56 @@ const BUTTONS = {
     CONTROL: {
         states: {
             PLAYING: {
-                text: 'Pause Voice Chat',
+                text: 'Stop Playing Audio',
                 icon: `
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;">
-                        <rect x="6" y="4" width="4" height="16"></rect>
-                        <rect x="14" y="4" width="4" height="16"></rect>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;">
+                        <rect x="6" y="4" width="4" height="16" rx="1" ry="1"></rect>
+                        <rect x="14" y="4" width="4" height="16" rx="1" ry="1"></rect>
                     </svg>
                 `,
                 style: `
-                    background: #FCD34D;
-                    color: #1E293B;
-                    border: none;
-                    box-shadow: 0 4px 16px rgba(251, 191, 36, 0.2);
+                    background: #EAB308;
+                    color: #FFFFFF;
                 `
             },
             ENABLED: {
-                text: 'Voice Chat Active',
+                text: 'Deactivate Voice Chat',
                 icon: `
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;">
-                        <path d="M14.47 3.12a.75.75 0 0 0-1.32-.48L8.27 8.5H4.75A.75.75 0 0 0 4 9.25v5.5c0 .41.34.75.75.75h3.52l4.88 5.86a.75.75 0 0 0 1.32-.48V3.12zm2.74 4.17a.75.75 0 0 1 1.06.02c1.27 1.31 2.03 3.1 2.03 5.06s-.76 3.75-2.03 5.06a.75.75 0 1 1-1.08-1.04c.96-1 1.61-2.37 1.61-4.02s-.65-3.02-1.61-4.02a.75.75 0 0 1 .02-1.06z" />
+                        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                        <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
                     </svg>
                 `,
                 style: `
-                    background: #0052cc;
-                    color: #ffffff;
-                    border: none;
-                    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12);
+                    background: #1E293B;
+                    color: #FFFFFF;
                 `
             },
             DISABLED: {
-                text: 'Start Voice Chat',
+                text: 'Activate Voice Chat',
                 icon: `
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;">
-                        <path d="M14.47 3.12a.75.75 0 0 0-1.32-.48L8.27 8.5H4.75A.75.75 0 0 0 4 9.25v5.5c0 .41.34.75.75.75h3.52l4.88 5.86a.75.75 0 0 0 1.32-.48V3.12zm2.74 4.17a.75.75 0 0 1 1.06.02c1.27 1.31 2.03 3.1 2.03 5.06s-.76 3.75-2.03 5.06a.75.75 0 1 1-1.08-1.04c.96-1 1.61-2.37 1.61-4.02s-.65-3.02-1.61-4.02a.75.75 0 0 1 .02-1.06z" />
+                        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                        <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
                     </svg>
                 `,
                 style: `
-                    background: #F8FAFC;
-                    color: #64748B;
-                    border: 1px solid #E2E8F0;
-                    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+                    background: #FFFFFF;
+                    color: #1E293B;
+                    border: 1px solid #1E293B;
                 `
             }
         },
         baseStyle: `
-            padding: 14px 24px;
-            border-radius: 14px;
+            padding: 8px 16px;
+            border-radius: 4px;
             cursor: pointer;
             font-weight: 500;
             font-size: 14px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            letter-spacing: -0.01em;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            backdrop-filter: blur(8px);
         `
     },
     MIC: {
@@ -84,9 +78,9 @@ const BUTTONS = {
                     </svg>
                 `,
                 style: `
-                    background: rgba(239, 68, 68, 0.08);
-                    color: #EF4444;
-                    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.2);
+                    background: rgba(239, 68, 68, 0.1);
+                    color: rgb(239, 68, 68);
+                    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.2);
                 `
             },
             INACTIVE: {
@@ -98,8 +92,7 @@ const BUTTONS = {
                 `,
                 style: `
                     background: transparent;
-                    color: #64748B;
-                    box-shadow: 0 0 0 1px #E2E8F0;
+                    color: #1F2937;
                 `
             }
         },
@@ -112,9 +105,8 @@ const BUTTONS = {
             align-items: center;
             justify-content: center;
             margin-right: 8px;
-            border-radius: 12px;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            backdrop-filter: blur(8px);
+            border-radius: 50%;
+            transition: background 0.3s ease;
         `
     }
 };
@@ -142,10 +134,10 @@ class AudioQueue {
                 z-index: 10000;
                 max-height: 300px;
                 overflow-y: auto;
-                background: #f9f9f9;
-                padding: 10px;
-                border-radius: 5px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                background: #ffffff;
+                padding: 12px;
+                border-radius: 10px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.1);
                 display: none;
             `;
             document.body.appendChild(this.audioWrapper);
@@ -385,6 +377,7 @@ function initializeSpeechRecognition() {
 
     recognition.onstart = () => {
         state.isRecognitionActive = true;
+        updateMicButtonAppearance(true);
     };
 
     recognition.onend = () => {
@@ -398,14 +391,7 @@ function initializeSpeechRecognition() {
                 console.warn('Failed to restart recognition:', error);
             }
         }
-        
-        const micButton = document.querySelector('#voice-input-button');
-        if (micButton) {
-            const buttonState = state.isEnabled ? BUTTONS.MIC.states.ACTIVE : BUTTONS.MIC.states.INACTIVE;
-            micButton.style.backgroundColor = buttonState.style.split(';')[0].split(':')[1].trim();
-            micButton.style.color = buttonState.style.split(';')[1].split(':')[1].trim();
-            micButton.innerHTML = buttonState.icon;
-        }
+        updateMicButtonAppearance(state.isEnabled);
     };
 
     recognition.onerror = (event) => {
@@ -467,37 +453,12 @@ function createMicrophoneButton() {
         ${buttonState.style}
     `;
 
-    const tooltip = document.createElement('div');
-    tooltip.style.cssText = `
-        position: absolute;
-        top: -40px;
-        left: 50%;
-        transform: translateX(-50%);
-        background-color: #1e1e1e;
-        color: white;
-        padding: 6px 12px;
-        border-radius: 6px;
-        font-size: 12px;
-        pointer-events: none;
-        opacity: 0;
-        transition: opacity 0.2s ease;
-        white-space: nowrap;
-    `;
-    tooltip.textContent = 'Voice input (say "over" to send)';
-    button.appendChild(tooltip);
-
-    button.onmouseenter = () => {
-        button.style.backgroundColor = state.isEnabled ? 
-            'rgba(255, 68, 68, 0.2)' : 'rgba(142, 142, 160, 0.1)';
-        tooltip.style.opacity = '1';
+    button.onclick = () => {
+        const controlButton = document.getElementById('voice-chat-control-button');
+        if (controlButton) {
+            controlButton.click();
+        }
     };
-    button.onmouseleave = () => {
-        const currentState = state.isEnabled ? BUTTONS.MIC.states.ACTIVE : BUTTONS.MIC.states.INACTIVE;
-        button.style.backgroundColor = currentState.style.match(/background-color:\s*([^;]+)/)[1];
-        tooltip.style.opacity = '0';
-    };
-
-    button.onclick = null;
 
     return button;
 }
@@ -510,7 +471,8 @@ function addMicrophoneButton() {
     if (target?.parentNode) {
         target.parentNode.style.display = 'flex';
         target.parentNode.style.alignItems = 'center';
-        target.parentNode.insertBefore(createMicrophoneButton(), target);
+        const micButton = createMicrophoneButton();
+        target.parentNode.insertBefore(micButton, target);
     }
 }
 
@@ -536,37 +498,32 @@ function createControlButton() {
         bottom: 100%;
         right: 0;
         margin-bottom: 12px;
-        background: white;
+        background: #FFFFFF;
         padding: 12px 16px;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-radius: 4px;
+        border: 1px solid #E5E7EB;
         font-size: 14px;
-        color: #333;
+        color: #000000;
         white-space: nowrap;
         display: none;
         align-items: center;
         gap: 8px;
         pointer-events: none;
+        animation: fadeIn 0.3s ease forwards;
     `;
     
     const styleSheet = document.createElement("style");
     styleSheet.textContent = `
-        @keyframes float {
-            0% {
-                transform: translateY(0px);
-            }
-            50% {
-                transform: translateY(-10px);
-            }
-            100% {
-                transform: translateY(0px);
-            }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
     `;
     document.head.appendChild(styleSheet);
     
     speechBubble.innerHTML = `
-      <svg fill="#ffffff" width="18" height="18" viewBox="0 0 32.00 32.00" id="icon" xmlns="http://www.w3.org/2000/svg" stroke="#ffffff" stroke-width="0.00032"><g id="SVGRepo_bgCarrier" stroke-width="0"><rect x="0" y="0" width="32.00" height="32.00" rx="16" fill="#212121" strokewidth="0"></rect></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round" stroke="#CCCCCC" stroke-width="0.768"></g><g id="SVGRepo_iconCarrier"> <defs> <style> .cls-1 { fill: none; } </style> </defs> <path d="M26,30H24V27H20a5.0055,5.0055,0,0,1-5-5V20.7207l-2.3162-.772a1,1,0,0,1-.5412-1.4631L15,13.7229V11a9.01,9.01,0,0,1,9-9h5V4H24a7.0078,7.0078,0,0,0-7,7v3a.9991.9991,0,0,1-.1426.5144l-2.3586,3.9312,1.8174.6057A1,1,0,0,1,17,20v2a3.0033,3.0033,0,0,0,3,3h5a1,1,0,0,1,1,1Z"></path> <rect x="19" y="12" width="4" height="2"></rect> <path d="M9.3325,25.2168a7.0007,7.0007,0,0,1,0-10.4341l1.334,1.49a5,5,0,0,0,0,7.4537Z"></path> <path d="M6.3994,28.8008a11.0019,11.0019,0,0,1,0-17.6006L7.6,12.8a9.0009,9.0009,0,0,0,0,14.4014Z"></path> <rect id="_Transparent_Rectangle_" data-name="<Transparent Rectangle>" class="cls-1" width="32" height="32"></rect> </g></svg>
+     <svg fill="#22D3EE" width="18px" height="18px" viewBox="0 0 32.00 32.00" id="icon" xmlns="http://www.w3.org/2000/svg" stroke="#22D3EE" stroke-width="0.00032"><g id="SVGRepo_bgCarrier" stroke-width="0"><rect x="0" y="0" width="32.00" height="32.00" rx="5.44" fill="#1E293B" strokewidth="0"></rect></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <defs> <style> .cls-1 { fill: none; } </style> </defs> <path d="M26,30H24V27H20a5.0055,5.0055,0,0,1-5-5V20.7207l-2.3162-.772a1,1,0,0,1-.5412-1.4631L15,13.7229V11a9.01,9.01,0,0,1,9-9h5V4H24a7.0078,7.0078,0,0,0-7,7v3a.9991.9991,0,0,1-.1426.5144l-2.3586,3.9312,1.8174.6057A1,1,0,0,1,17,20v2a3.0033,3.0033,0,0,0,3,3h5a1,1,0,0,1,1,1Z"></path> <rect x="19" y="12" width="4" height="2"></rect> <path d="M9.3325,25.2168a7.0007,7.0007,0,0,1,0-10.4341l1.334,1.49a5,5,0,0,0,0,7.4537Z"></path> <path d="M6.3994,28.8008a11.0019,11.0019,0,0,1,0-17.6006L7.6,12.8a9.0009,9.0009,0,0,0,0,14.4014Z"></path> <rect id="_Transparent_Rectangle_" data-name="<Transparent Rectangle>" class="cls-1" width="32" height="32"></rect> </g></svg>
+
         Speak, then say "over" to send message
     `;
 
@@ -577,9 +534,10 @@ function createControlButton() {
         right: 20px;
         width: 12px;
         height: 12px;
-        background: white;
+        background: #FFFFFF;
         transform: rotate(45deg);
-        box-shadow: 3px 3px 3px rgba(0,0,0,0.05);
+        border-right: 1px solid #E5E7EB;
+        border-bottom: 1px solid #E5E7EB;
     `;
 
     speechBubble.appendChild(arrow);
@@ -619,8 +577,8 @@ function createControlButton() {
                 top: -40px;
                 left: 50%;
                 transform: translateX(-50%);
-                background-color: #1e1e1e;
-                color: white;
+                background-color: rgba(31, 41, 55, 0.9);
+                color: #FFFFFF;
                 padding: 6px 12px;
                 border-radius: 6px;
                 font-size: 12px;
@@ -628,7 +586,7 @@ function createControlButton() {
                 opacity: 0;
                 transition: opacity 0.2s ease;
                 white-space: nowrap;
-                z-index: 10001;
+                z-index: 1001;
             `;
             tooltip.textContent = 'Please set your ElevenLabs API key in the extension popup';
             button.appendChild(tooltip);
@@ -665,32 +623,15 @@ function createControlButton() {
 
             updateButtonAppearance(button, false, state.isEnabled);
             updateSpeechBubbleVisibility(state.isEnabled);
+            updateMicButtonAppearance(state.isEnabled);
         };
 
         button.onmouseenter = () => {
             if (!hasApiKey) return;
-            if (state.isPlaying) {
-                button.style.cssText = `
-                    ${BUTTONS.CONTROL.baseStyle}
-                    ${BUTTONS.CONTROL.states.PLAYING.style}
-                    background-color: #e6b800;
-                `;
-                return;
-            }
-            button.style.cssText = `
-                ${BUTTONS.CONTROL.baseStyle}
-                ${state.isEnabled ? BUTTONS.CONTROL.states.ENABLED.style : BUTTONS.CONTROL.states.DISABLED.style}
-                background-color: ${state.isEnabled ? '#0052cc' : '#e8e8e8'};
-            `;
         };
 
         button.onmouseleave = () => {
             if (!hasApiKey) return;
-            if (state.isPlaying) {
-                button.style.cssText = `${BUTTONS.CONTROL.baseStyle} ${BUTTONS.CONTROL.states.PLAYING.style}`;
-                return;
-            }
-            button.style.cssText = `${BUTTONS.CONTROL.baseStyle} ${state.isEnabled ? BUTTONS.CONTROL.states.ENABLED.style : BUTTONS.CONTROL.states.DISABLED.style}`;
         };
 
         const originalOnClick = button.onclick;
@@ -814,7 +755,13 @@ function getButtonStyles(isPlaying, isEnabled) {
 function updateButtonAppearance(button, isPlaying, isEnabled) {
     const stateKey = isPlaying ? 'PLAYING' : (isEnabled ? 'ENABLED' : 'DISABLED');
     const buttonConfig = BUTTONS.CONTROL.states[stateKey];
-    button.innerHTML = `${buttonConfig.icon}${buttonConfig.text}`;
+    
+    button.innerHTML = `
+        <span style="color: ${isEnabled ? '#22D3EE' : 'currentColor'}">
+            ${buttonConfig.icon}
+        </span>
+        ${buttonConfig.text}
+    `;
     button.style.cssText = BUTTONS.CONTROL.baseStyle + buttonConfig.style;
 }
 
@@ -822,6 +769,18 @@ function updateSpeechBubbleVisibility(isEnabled) {
     const speechBubble = document.querySelector('#voice-chat-control-button')?.parentElement?.querySelector('div');
     if (speechBubble) {
         speechBubble.style.display = isEnabled ? 'flex' : 'none';
+    }
+}
+
+function updateMicButtonAppearance(isEnabled) {
+    const micButton = document.querySelector('#voice-input-button');
+    if (micButton) {
+        const buttonState = isEnabled ? BUTTONS.MIC.states.ACTIVE : BUTTONS.MIC.states.INACTIVE;
+        micButton.style.cssText = `
+            ${BUTTONS.MIC.baseStyle}
+            ${buttonState.style}
+        `;
+        micButton.innerHTML = buttonState.icon;
     }
 }
 
