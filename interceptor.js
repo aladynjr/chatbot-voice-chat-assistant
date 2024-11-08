@@ -55,6 +55,7 @@ const cleanChunkText = (text) => {
         .replace(/```[\s\S]*?```/g, '') // Remove code blocks
         .replace(/\*\*([^*]+?)\*\*/g, '$1')     // Keep bold text content
         .replace(/\*([^*]+?)\*/g, '$1')         // Keep italic text content
+        .replace(/_([^_]+?)_/g, '$1')           // Keep underscore-italic text content
         .replace(/`([^`]+)`/g, '$1')            // Keep inline code content
         .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Keep link text
         .replace(/^#{1,6}\s+(.+)$/gm, '$1')     // Keep header content
@@ -62,19 +63,26 @@ const cleanChunkText = (text) => {
         .replace(/【[^】]+】/g, '')             // Remove sources in【】brackets
         .replace(/\[\d+\†source\]/g, '')        // Remove [number†source] format
         .replace(/^\d+\.\s+/gm, '')            // Remove numbered list markers
-        .replace(/([a-z])([A-Z])/g, '$1 $2')   // Add space between words that are incorrectly joined
-        .trim() + ' ';                          // Add empty space at the end
+        .replace(/([a-z])([A-Z])/g, '$1 $2')   // Add space between camelCase
+        .replace(/([.!?])"(\s|$)/g, '"$1$2')   // Fix quote placement after punctuation
+        .replace(/(\w)(["""])/g, '$1 $2')      // Add space before quotes
+        .replace(/(["""])(\w)/g, '$1 $2')      // Add space after quotes
+        .replace(/(\w)([.!?])(\w)/g, '$1$2 $3') // Add space after punctuation between words
+        .trim() + ' ';                          // Add space at the end
 };
 
 // Helper function to split text into sentences
 const splitIntoSentences = (text) => {
-    // More comprehensive sentence splitting that looks for actual sentence boundaries
+    // More comprehensive sentence splitting
     const sentences = text.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) || [];
-    return sentences.filter(sentence => {
-        const cleaned = sentence.trim();
-        // Filter out single letters or very short fragments
-        return cleaned.length > 2 && !/^[A-Z]\.$/.test(cleaned);
-    });
+    return sentences
+        .map(sentence => sentence.trim())
+        .filter(sentence => {
+            // Filter out single letters or very short fragments
+            return sentence.length > 2 && 
+                   !/^[A-Z]\.$/.test(sentence) &&
+                   !/^\s*$/.test(sentence);
+        });
 };
 
 // Function to process the chunk queue
@@ -87,7 +95,12 @@ const processQueue = async () => {
         const cleanedChunk = cleanChunkText(chunk);
         if (cleanedChunk.length <= 1) continue;
 
-        pendingText += ` ${cleanedChunk}`.trim();
+        // Ensure there's a space before appending if needed
+        if (pendingText.length > 0 && !pendingText.endsWith(' ')) {
+            pendingText += ' ';
+        }
+        pendingText += cleanedChunk;
+
         console.log('Current pendingText:', pendingText);
 
         const sentences = splitIntoSentences(pendingText);
@@ -219,14 +232,19 @@ window.fetch = async function(...args) {
     (async () => {
         try {
             while (true) {
-                if (shouldIgnoreProcessing) {
-                    currentReader.cancel();
-                    currentReader = null;
+                if (shouldIgnoreProcessing || !currentReader) {
+                    if (currentReader) {
+                        currentReader.cancel();
+                        currentReader = null;
+                    }
                     break;
                 }
                 
                 const {done, value} = await currentReader.read();
-                if (done) break;
+                if (done) {
+                    currentReader = null;  // Clean up the reader when done
+                    break;
+                }
 
                 const chunk = new TextDecoder().decode(value);
                 for (const event of chunk.split('\n\n')) {
@@ -248,7 +266,13 @@ window.fetch = async function(...args) {
                 }
             }
         } catch (error) {
-            if (error.name !== 'AbortError') console.error('Stream processing error:', error);
+            if (error.name !== 'AbortError') {
+                console.error('Stream processing error:', error);
+            }
+            if (currentReader) {
+                currentReader.cancel();
+                currentReader = null;
+            }
         } finally {
             currentReader = null;
         }
