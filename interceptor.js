@@ -35,16 +35,18 @@ const resetChatState = () => {
 
 // Helper function to extract text from different chunk formats
 const extractChunkText = (parsed) => {
-    if (parsed.v?.message?.content?.parts?.[0]) return parsed.v.message.content.parts[0];
-    if (parsed.p === '/message/content/parts/0' && parsed.o === 'append') return parsed.v;
-    if (parsed.v && typeof parsed.v === 'string' && !parsed.p) return parsed.v;
-    if (parsed.p === '' && parsed.o === 'patch' && Array.isArray(parsed.v)) {
-        return parsed.v
+    let text = '';
+    if (parsed.v?.message?.content?.parts?.[0]) text = parsed.v.message.content.parts[0];
+    else if (parsed.p === '/message/content/parts/0' && parsed.o === 'append') text = parsed.v;
+    else if (parsed.v && typeof parsed.v === 'string' && !parsed.p) text = parsed.v;
+    else if (parsed.p === '' && parsed.o === 'patch' && Array.isArray(parsed.v)) {
+        text = parsed.v
             .filter(p => p.p === '/message/content/parts/0' && p.o === 'append')
             .map(p => p.v)
             .join('');
     }
-    return '';
+    // Ensure there's a space at the end of the chunk
+    return text ? text.trim() + ' ' : '';
 };
 
 // Clean text helper
@@ -57,6 +59,8 @@ const cleanChunkText = (text) => {
         .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Remove links
         .replace(/#{1,6}\s/g, '')         // Remove headers
         .replace(/>\s[^\n]+/g, '')        // Remove blockquotes
+        .replace(/【[^】]+】/g, '')        // Remove sources in【】brackets
+        .replace(/\[\d+\†source\]/g, '')   // Remove [number†source] format
         .trim();
 };
 
