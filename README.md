@@ -66,10 +66,7 @@ The extension consists of several key components:
 ## Permissions
 
 The extension requires the following permissions:
-- `webRequest`: For API communication
 - `storage`: For saving API key
-- `activeTab`: For webpage interaction
-- `scripting`: For script injection
 
 ## Browser Support
 
